@@ -7,11 +7,28 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		4A568BCC2013DFE000C8736F /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 4A568BCB2013DFE000C8736F /* main.c */; };
+		4A09FFE1202A2B18004096A9 /* benchmark_changaN100.txt in CopyFiles */ = {isa = PBXBuildFile; fileRef = 4A78228D2013E79C00BB2059 /* benchmark_changaN100.txt */; };
+		4A09FFE2202A2B18004096A9 /* benchmark_NaClN8.txt in CopyFiles */ = {isa = PBXBuildFile; fileRef = 4A78228E2013E79C00BB2059 /* benchmark_NaClN8.txt */; };
+		4A09FFE5202D67C9004096A9 /* msmPeriodic.c in Sources */ = {isa = PBXBuildFile; fileRef = 4A09FFE3202D67C9004096A9 /* msmPeriodic.c */; };
+		4A568BE32013E30D00C8736F /* ewaldHernquist.c in Sources */ = {isa = PBXBuildFile; fileRef = 4A568BD22013E11200C8736F /* ewaldHernquist.c */; };
+		4A7822872013E41E00BB2059 /* ewaldClassical.c in Sources */ = {isa = PBXBuildFile; fileRef = 4A568BD52013E1E600C8736F /* ewaldClassical.c */; };
+		4A78228A2013E49600BB2059 /* msmLibrary.c in Sources */ = {isa = PBXBuildFile; fileRef = 4A7822892013E49600BB2059 /* msmLibrary.c */; };
+		4A78228B2013E49600BB2059 /* msmLibrary.c in Sources */ = {isa = PBXBuildFile; fileRef = 4A7822892013E49600BB2059 /* msmLibrary.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		4A568BC62013DFDF00C8736F /* CopyFiles */ = {
+		4A568BDA2013E2A000C8736F /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 12;
+			dstPath = .;
+			dstSubfolderSpec = 16;
+			files = (
+				4A09FFE1202A2B18004096A9 /* benchmark_changaN100.txt in CopyFiles */,
+				4A09FFE2202A2B18004096A9 /* benchmark_NaClN8.txt in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4A78227E2013E3DB00BB2059 /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = /usr/share/man/man1/;
@@ -23,12 +40,29 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		4A568BC82013DFE000C8736F /* msm */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = msm; sourceTree = BUILT_PRODUCTS_DIR; };
-		4A568BCB2013DFE000C8736F /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
+		4A09FFE3202D67C9004096A9 /* msmPeriodic.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = msmPeriodic.c; sourceTree = "<group>"; };
+		4A568BD22013E11200C8736F /* ewaldHernquist.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = ewaldHernquist.c; path = ../msm/ewaldHernquist.c; sourceTree = "<group>"; };
+		4A568BD32013E11200C8736F /* ewaldHernquist.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = ewaldHernquist.h; path = ../msm/ewaldHernquist.h; sourceTree = "<group>"; };
+		4A568BD52013E1E600C8736F /* ewaldClassical.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = ewaldClassical.c; path = ../msm/ewaldClassical.c; sourceTree = "<group>"; };
+		4A568BD62013E1E600C8736F /* ewaldClassical.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = ewaldClassical.h; path = ../msm/ewaldClassical.h; sourceTree = "<group>"; };
+		4A568BDC2013E2A000C8736F /* ewaldHernquist */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = ewaldHernquist; sourceTree = BUILT_PRODUCTS_DIR; };
+		4A7822802013E3DB00BB2059 /* ewaldClassical */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = ewaldClassical; sourceTree = BUILT_PRODUCTS_DIR; };
+		4A7822882013E46500BB2059 /* msmLibrary.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = msmLibrary.h; sourceTree = "<group>"; };
+		4A7822892013E49600BB2059 /* msmLibrary.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = msmLibrary.c; sourceTree = "<group>"; };
+		4A78228D2013E79C00BB2059 /* benchmark_changaN100.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = benchmark_changaN100.txt; sourceTree = "<group>"; };
+		4A78228E2013E79C00BB2059 /* benchmark_NaClN8.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = benchmark_NaClN8.txt; sourceTree = "<group>"; };
+		4AB0AAFF202D6BD900DAD237 /* benchmark_gadgetN512.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = benchmark_gadgetN512.txt; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		4A568BC52013DFDF00C8736F /* Frameworks */ = {
+		4A568BD92013E2A000C8736F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4A78227D2013E3DB00BB2059 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -42,6 +76,8 @@
 			isa = PBXGroup;
 			children = (
 				4A568BCA2013DFE000C8736F /* msm */,
+				4A568BDD2013E2A000C8736F /* ewaldHernquist */,
+				4A7822812013E3DB00BB2059 /* ewaldClassical */,
 				4A568BC92013DFE000C8736F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -49,7 +85,8 @@
 		4A568BC92013DFE000C8736F /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				4A568BC82013DFE000C8736F /* msm */,
+				4A568BDC2013E2A000C8736F /* ewaldHernquist */,
+				4A7822802013E3DB00BB2059 /* ewaldClassical */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -57,29 +94,77 @@
 		4A568BCA2013DFE000C8736F /* msm */ = {
 			isa = PBXGroup;
 			children = (
-				4A568BCB2013DFE000C8736F /* main.c */,
+				4A09FFE3202D67C9004096A9 /* msmPeriodic.c */,
+				4A7822882013E46500BB2059 /* msmLibrary.h */,
+				4A7822892013E49600BB2059 /* msmLibrary.c */,
+				4A78228C2013E79C00BB2059 /* data */,
 			);
 			path = msm;
+			sourceTree = "<group>";
+		};
+		4A568BDD2013E2A000C8736F /* ewaldHernquist */ = {
+			isa = PBXGroup;
+			children = (
+				4A568BD22013E11200C8736F /* ewaldHernquist.c */,
+				4A568BD32013E11200C8736F /* ewaldHernquist.h */,
+			);
+			path = ewaldHernquist;
+			sourceTree = "<group>";
+		};
+		4A7822812013E3DB00BB2059 /* ewaldClassical */ = {
+			isa = PBXGroup;
+			children = (
+				4A568BD52013E1E600C8736F /* ewaldClassical.c */,
+				4A568BD62013E1E600C8736F /* ewaldClassical.h */,
+			);
+			path = ewaldClassical;
+			sourceTree = "<group>";
+		};
+		4A78228C2013E79C00BB2059 /* data */ = {
+			isa = PBXGroup;
+			children = (
+				4AB0AAFF202D6BD900DAD237 /* benchmark_gadgetN512.txt */,
+				4A78228D2013E79C00BB2059 /* benchmark_changaN100.txt */,
+				4A78228E2013E79C00BB2059 /* benchmark_NaClN8.txt */,
+			);
+			path = data;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		4A568BC72013DFDF00C8736F /* msm */ = {
+		4A568BDB2013E2A000C8736F /* ewaldHernquist */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 4A568BCF2013DFE000C8736F /* Build configuration list for PBXNativeTarget "msm" */;
+			buildConfigurationList = 4A568BE02013E2A000C8736F /* Build configuration list for PBXNativeTarget "ewaldHernquist" */;
 			buildPhases = (
-				4A568BC42013DFDF00C8736F /* Sources */,
-				4A568BC52013DFDF00C8736F /* Frameworks */,
-				4A568BC62013DFDF00C8736F /* CopyFiles */,
+				4A568BD82013E2A000C8736F /* Sources */,
+				4A568BD92013E2A000C8736F /* Frameworks */,
+				4A568BDA2013E2A000C8736F /* CopyFiles */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
-			name = msm;
-			productName = msm;
-			productReference = 4A568BC82013DFE000C8736F /* msm */;
+			name = ewaldHernquist;
+			productName = ewaldHernquist;
+			productReference = 4A568BDC2013E2A000C8736F /* ewaldHernquist */;
+			productType = "com.apple.product-type.tool";
+		};
+		4A78227F2013E3DB00BB2059 /* ewaldClassical */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4A7822862013E3DB00BB2059 /* Build configuration list for PBXNativeTarget "ewaldClassical" */;
+			buildPhases = (
+				4A78227C2013E3DB00BB2059 /* Sources */,
+				4A78227D2013E3DB00BB2059 /* Frameworks */,
+				4A78227E2013E3DB00BB2059 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ewaldClassical;
+			productName = ewaldClassical;
+			productReference = 4A7822802013E3DB00BB2059 /* ewaldClassical */;
 			productType = "com.apple.product-type.tool";
 		};
 /* End PBXNativeTarget section */
@@ -91,7 +176,11 @@
 				LastUpgradeCheck = 0820;
 				ORGANIZATIONNAME = "Huseyin Kaya";
 				TargetAttributes = {
-					4A568BC72013DFDF00C8736F = {
+					4A568BDB2013E2A000C8736F = {
+						CreatedOnToolsVersion = 8.2.1;
+						ProvisioningStyle = Automatic;
+					};
+					4A78227F2013E3DB00BB2059 = {
 						CreatedOnToolsVersion = 8.2.1;
 						ProvisioningStyle = Automatic;
 					};
@@ -109,17 +198,29 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				4A568BC72013DFDF00C8736F /* msm */,
+				4A568BDB2013E2A000C8736F /* ewaldHernquist */,
+				4A78227F2013E3DB00BB2059 /* ewaldClassical */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXSourcesBuildPhase section */
-		4A568BC42013DFDF00C8736F /* Sources */ = {
+		4A568BD82013E2A000C8736F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4A568BCC2013DFE000C8736F /* main.c in Sources */,
+				4A568BE32013E30D00C8736F /* ewaldHernquist.c in Sources */,
+				4A09FFE5202D67C9004096A9 /* msmPeriodic.c in Sources */,
+				4A78228A2013E49600BB2059 /* msmLibrary.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4A78227C2013E3DB00BB2059 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4A7822872013E41E00BB2059 /* ewaldClassical.c in Sources */,
+				4A78228B2013E49600BB2059 /* msmLibrary.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -152,7 +253,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_C_LANGUAGE_STANDARD = ansi;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
@@ -199,7 +300,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_C_LANGUAGE_STANDARD = ansi;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
@@ -213,16 +314,34 @@
 			};
 			name = Release;
 		};
-		4A568BD02013DFE000C8736F /* Debug */ = {
+		4A568BE12013E2A000C8736F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				GCC_C_LANGUAGE_STANDARD = ansi;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Debug;
 		};
-		4A568BD12013DFE000C8736F /* Release */ = {
+		4A568BE22013E2A000C8736F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				GCC_C_LANGUAGE_STANDARD = ansi;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		4A7822842013E3DB00BB2059 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GCC_C_LANGUAGE_STANDARD = ansi;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		4A7822852013E3DB00BB2059 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GCC_C_LANGUAGE_STANDARD = ansi;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;
@@ -239,13 +358,23 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		4A568BCF2013DFE000C8736F /* Build configuration list for PBXNativeTarget "msm" */ = {
+		4A568BE02013E2A000C8736F /* Build configuration list for PBXNativeTarget "ewaldHernquist" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				4A568BD02013DFE000C8736F /* Debug */,
-				4A568BD12013DFE000C8736F /* Release */,
+				4A568BE12013E2A000C8736F /* Debug */,
+				4A568BE22013E2A000C8736F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4A7822862013E3DB00BB2059 /* Build configuration list for PBXNativeTarget "ewaldClassical" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4A7822842013E3DB00BB2059 /* Debug */,
+				4A7822852013E3DB00BB2059 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

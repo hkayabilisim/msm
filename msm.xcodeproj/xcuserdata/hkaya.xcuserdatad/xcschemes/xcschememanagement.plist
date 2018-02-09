@@ -4,6 +4,16 @@
 <dict>
 	<key>SchemeUserState</key>
 	<dict>
+		<key>ewaldClassical.xcscheme</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>2</integer>
+		</dict>
+		<key>ewaldHernquist.xcscheme</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>1</integer>
+		</dict>
 		<key>msm.xcscheme</key>
 		<dict>
 			<key>orderHint</key>
@@ -13,6 +23,16 @@
 	<key>SuppressBuildableAutocreation</key>
 	<dict>
 		<key>4A568BC72013DFDF00C8736F</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>4A568BDB2013E2A000C8736F</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>4A78227F2013E3DB00BB2059</key>
 		<dict>
 			<key>primary</key>
 			<true/>
