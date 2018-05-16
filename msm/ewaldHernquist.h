@@ -8,5 +8,5 @@
 #include "msmLibrary.h"
 
 void ewaldHernQuistRunner(char *dataFile, double alpha, double cutoffDirect, double cutoffFourier);
-double ewaldHernquist(double *r, double *q, int n, double L,double alpha, double cutoffDirect,double cutoffFourier);
+double ewaldHernquist(double *r, double *q, double *f, int n, double L,double alpha, double cutoffDirect,double cutoffFourier);
 #endif /* ewaldHernquist_h */

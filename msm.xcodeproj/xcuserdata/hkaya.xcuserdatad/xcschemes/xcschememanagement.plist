@@ -9,6 +9,11 @@
 			<key>orderHint</key>
 			<integer>2</integer>
 		</dict>
+		<key>ewaldHernquist NaCl.xcscheme</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>3</integer>
+		</dict>
 		<key>ewaldHernquist.xcscheme</key>
 		<dict>
 			<key>orderHint</key>
@@ -18,6 +23,21 @@
 		<dict>
 			<key>orderHint</key>
 			<integer>0</integer>
+		</dict>
+		<key>msmExpected.xcscheme</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>4</integer>
+		</dict>
+		<key>msmPeriodic.xcscheme</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>5</integer>
+		</dict>
+		<key>msmSimple.xcscheme</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>6</integer>
 		</dict>
 	</dict>
 	<key>SuppressBuildableAutocreation</key>
@@ -33,6 +53,21 @@
 			<true/>
 		</dict>
 		<key>4A78227F2013E3DB00BB2059</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>4A8C205D208A6FCF000FE92A</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>4AABE0C320309DAF004ECF06</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>4AC3A10020AA368800E0E416</key>
 		<dict>
 			<key>primary</key>
 			<true/>

@@ -13,9 +13,21 @@
 #define MAX_POLY_DEGREE 6
 #define MAX_MU 14
 #define PI  3.14159265358979323846
+#define VERYLARGENUMBER 1e30
 
-#define TAUP4(X) ((35. + (X*X) * (-35. + (21. - 5.*(X*X))*(X*X)) )/16.0)
-#define ERFBETA(BETA,X) (X < DBL_EPSILON ? (2.0*BETA/sqrt(M_PI)) : (myerf(BETA*X)/X))
+#define TAUP4(X)  ((35. + (X*X) * (-35. + (21. - 5.*(X*X))*(X*X)) )/16.0)
+#define TAUP4D(X) ((X*(-35.+X*X*(42. - 15.*X*X)))/8.0)
+#define ERFBETA(BETA,X) (X < DBL_EPSILON ? (2.0*BETA/sqrt(M_PI)) : (erf(BETA*X)/X))
+
+typedef struct Parameters
+{
+    double abar ; /* Relative cutoff */
+    int    mu   ; /* Quasi-interpolation */
+    int    p    ; /* B-spline order */
+    double Ax ;
+    double Ay ;
+    double Az ;
+} Parameters ;
 
 typedef struct LinkedListElement
 {
@@ -43,6 +55,7 @@ typedef struct msm_stats
     double beta ;
     int    p;
     int    s;
+    int kmax;
     double csr;
     int chinx,chiny,chinz,chisize;
     double *cvecx,*cvecy,*cvecz;
@@ -231,5 +244,7 @@ void report20171221_ewald();
 
 int data_read(char *filename, double **q, double **r, int *N, double *Lx, double *Ly, double *Lz);
 
-float myerfc(float x);
+double mylog2(double x);
+
+double msmPeriodicRunner(double *r,double *q,double *f,int n,int p,int mu,double abar,double Lx,double Ly,double Lz);
 #endif /* msmLibrary_h */

@@ -11,7 +11,7 @@ double ewaldClassical(double *r,double *q,int N,
     double eself = 0.0;
     double etota = 0.0;
     int kmax ; 
-    double PI = 3.14159265358979323846;
+    /* double PI = 3.14159265358979323846; */
     double V = Lx*Ly*Lz;
     
     int i,j,l,kx,ky,kz;
@@ -47,7 +47,7 @@ double ewaldClassical(double *r,double *q,int N,
             
             if (rjl <= cutoffDirect)
             {
-                e = 0.5 * qj * ql * myerfc(alpha * rjl) / rjl ;
+                e = 0.5 * qj * ql * erfc(alpha * rjl) / rjl ;
                 ereal += e;
             }
         }
