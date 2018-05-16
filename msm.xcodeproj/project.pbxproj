@@ -120,7 +120,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		4A09FFE3202D67C9004096A9 /* msmPeriodic.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = msmPeriodic.c; sourceTree = "<group>"; };
+		4A09FFE3202D67C9004096A9 /* msmPeriodic.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = msmPeriodic.c; path = msm/msmPeriodic.c; sourceTree = "<group>"; };
 		4A4D3DA92075882E009C2DD7 /* benchmark_changaN512.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = benchmark_changaN512.txt; sourceTree = "<group>"; };
 		4A4D3DAA2075882E009C2DD7 /* benchmark_changaN64.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = benchmark_changaN64.txt; sourceTree = "<group>"; };
 		4A4D3DAB2075882E009C2DD7 /* benchmark_changaN8.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = benchmark_changaN8.txt; sourceTree = "<group>"; };
@@ -190,6 +190,7 @@
 		4A568BBF2013DFDE00C8736F = {
 			isa = PBXGroup;
 			children = (
+				4A09FFE3202D67C9004096A9 /* msmPeriodic.c */,
 				4A78228C2013E79C00BB2059 /* data */,
 				4A568BCA2013DFE000C8736F /* msm */,
 				4A568BDD2013E2A000C8736F /* ewaldHernquist */,
@@ -216,7 +217,6 @@
 			isa = PBXGroup;
 			children = (
 				4A58EA5F20893CC90092A878 /* msmExpected.c */,
-				4A09FFE3202D67C9004096A9 /* msmPeriodic.c */,
 				4A7822882013E46500BB2059 /* msmLibrary.h */,
 				4A7822892013E49600BB2059 /* msmLibrary.c */,
 				4AC3A0FC20AA35C000E0E416 /* msmSimple.c */,
