@@ -138,7 +138,7 @@
 		4A8C2072208A6FCF000FE92A /* msmExpected */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = msmExpected; sourceTree = BUILT_PRODUCTS_DIR; };
 		4AABE0C420309DAF004ECF06 /* msmPeriodic */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = msmPeriodic; sourceTree = BUILT_PRODUCTS_DIR; };
 		4AB0AAFF202D6BD900DAD237 /* benchmark_gadgetN512.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = benchmark_gadgetN512.txt; sourceTree = "<group>"; };
-		4AC3A0FC20AA35C000E0E416 /* msmSimple.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = msmSimple.c; sourceTree = "<group>"; };
+		4AC3A0FC20AA35C000E0E416 /* msmSimple.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = msmSimple.c; path = ../msm/msmSimple.c; sourceTree = "<group>"; };
 		4AC3A10120AA368800E0E416 /* msmSimple */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = msmSimple; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F57068C2061AF8E0030921C /* benchmark_NaClN216.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = benchmark_NaClN216.txt; sourceTree = "<group>"; };
 		8F57068D2061AF8E0030921C /* benchmark_NaClN64.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = benchmark_NaClN64.txt; sourceTree = "<group>"; };
@@ -218,7 +218,6 @@
 				4A58EA5F20893CC90092A878 /* msmExpected.c */,
 				4A7822882013E46500BB2059 /* msmLibrary.h */,
 				4A7822892013E49600BB2059 /* msmLibrary.c */,
-				4AC3A0FC20AA35C000E0E416 /* msmSimple.c */,
 			);
 			path = msm;
 			sourceTree = "<group>";
@@ -250,12 +249,12 @@
 				8FA13649206461810019D7C4 /* benchmark_NaNaN8.txt */,
 				8FA1364A206461820019D7C4 /* benchmark_NaNaN64.txt */,
 				8FA1364B206461820019D7C4 /* benchmark_NaNaN512.txt */,
+				4A78228E2013E79C00BB2059 /* benchmark_NaClN8.txt */,
 				8F57068D2061AF8E0030921C /* benchmark_NaClN64.txt */,
 				8F57068C2061AF8E0030921C /* benchmark_NaClN216.txt */,
 				8F57068E2061AF8E0030921C /* benchmark_NaClN512.txt */,
 				4AB0AAFF202D6BD900DAD237 /* benchmark_gadgetN512.txt */,
 				4A78228D2013E79C00BB2059 /* benchmark_changaN100.txt */,
-				4A78228E2013E79C00BB2059 /* benchmark_NaClN8.txt */,
 			);
 			name = data;
 			path = msm/data;
@@ -272,6 +271,7 @@
 		4AC3A10220AA368800E0E416 /* msmSimple */ = {
 			isa = PBXGroup;
 			children = (
+				4AC3A0FC20AA35C000E0E416 /* msmSimple.c */,
 			);
 			path = msmSimple;
 			sourceTree = "<group>";
