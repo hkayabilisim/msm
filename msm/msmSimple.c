@@ -8,75 +8,100 @@
 #define X 0
 #define Y 1
 #define Z 2
-#define NMAX  1024
-#define MMAX  10
+#define NMAX  1000
+#define MMAX  100
+#define SMAX  100
 #define MYPI  3.141592653589793238462643
-#define SMAX  20
 
-int N ;
-int Mx, My, Mz ;
-int v;
-int mu;
-int kmax;
-int pmax;
-char dataname[60];
-double Ax, Ay, Az, detA ;
-double abar ;
-double a,aL;
-double h,hL,hx,hy,hz;
-double beta;
-
-double ushort_real;
-double ushort_self;
-double ushort_csr ;
-double ulong_real ; double ulong_real_expected;
-double ulong_four ;
-double ulong_four_expected;
-double ulong_four_expected_cossum;
-double ulong_four_expected_sinsum;
-double ulong_self ;
-double utotal;
-double utotal_expected;
-
-
-double r[NMAX][3] ;
-double q[NMAX];
-double qm[MMAX][MMAX][MMAX];
-double em[MMAX][MMAX][MMAX];
-double em_fourier[MMAX][MMAX][MMAX];
-double Kl[SMAX][SMAX][SMAX];
-double KL[SMAX][SMAX][SMAX];
-
-// M/2 - (-M/2 +1) = 2M-1
-// (-M/2+1) - (M/2) = 1-2M
-
-// pre-pre processing for mu=10 and v=4
-static const double wprime[13] = {
-    3.4641016151377539e+00, // 0
+// Pre-preprocessed for v=4 and mu=10
+double wprime[13] = {
+     3.4641016151377539e+00, // 0
     -1.7320508075688767e+00,
-    6.7949192431122685e-01,
+     6.7949192431122685e-01,
     -2.3978297178318450e-01,
-    7.9713982076653617e-02,
+     7.9713982076653617e-02,
     -2.5502951436845282e-02,
-    7.9437840692459776e-03,
+     7.9437840692459776e-03,
     -2.4260315207973015e-03,
-    7.2976833805943851e-04,
+     7.2976833805943851e-04,
     -2.1633348486544432e-04,
-    6.1410409127506203e-05, // mu = 10
+     6.1410409127506203e-05,  // 10
     -1.4537930745802521e-05,
-    1.9569521248038610e-06}; // mu = 10 + v/2 (v=4)
+     1.9569521248038610e-06}; // 10 + v/2 (v=4)
 
-double Bspline(int k,double u) {
-    if (k==1) {
-        if (u >= 0 && u < 1)
-            return 1.0;
-        else
-            return 0.0;
-    } else {
-        return u/(double)(k-1) * Bspline(k-1,u) + (k-u)/(double)(k-1) * Bspline(k-1,u-1.0);
-    }
+int N ;                    // # particles
+int Mx, My, Mz ;           // # grid points
+int v;                     // B-spline (v=4)
+int mu;                    // Quasi-interpolation (mu=10) 
+int kmax;                  // # wavenumbers in Fourier sum
+int pmax;                  // # replications in direct-sum
+
+char dataname[60];         // benchmark name 
+double Ax, Ay, Az;         // Width of periodic cell
+double detA;               // volume (Ax * Ay * Az)
+double abar ;              // relative cuttoff
+double a,aL;               // cutoffs
+double h,hL,hx,hy,hz;      // grid spacings
+double beta;               // Ewald splitting parameter
+
+double ushort_real;     // Eq.11 first component
+double ushort_self;     // Eq.11 second component
+double ushort_csr ;     // Eq.11 third component     
+double ulong_real ;     // Eq.12 first component when l=1
+double ulong_real_expected; // Eq.14 first component when l=1 
+double ulong_four ;               // Eq.12 first component when l=2
+double ulong_four_expected;       // Eq.14 first component when l=2 
+double ulong_four_expected_cossum;// cos sum of Eq.14 first component when l=2 
+double ulong_four_expected_sinsum;// sin sum of Eq.14 first component when l=2 
+double ulong_self ;               // Eq.12 second component
+double utotal;                    // Eq.11 + Eq.14
+double utotal_expected;           // Eq.11 + Eq.12
+
+double r[NMAX][3];                   // Particle positions (0 <= r <= Ax)
+double q[NMAX];                      // Particle charges
+double qm[MMAX][MMAX][MMAX];         // Grid charges
+double em[MMAX][MMAX][MMAX];         // Grid potentials for l=1
+double em_fourier[MMAX][MMAX][MMAX]; // Grid potentials for l=2
+double Kl[SMAX][SMAX][SMAX];         // Stencil for l=1
+double KL[SMAX][SMAX][SMAX];         // Stencil for l=2
+
+double Bspline(int k,double u) ; // Recursive definition in 2.2.1
+double gama(double rho);         // Eq.31 and the one before
+double gLR(double r);            // Eq.1 and 2
+double g0(double r);             // Eq.15 first part
+double g1(double r);             // Eq.15 last part
+
+void calculate_ushort_real();
+void calculate_ushort_self();
+void calculate_ushort_csr();
+void calculate_ulong_self();
+void calculate_ulong_real_expected();
+void calculate_ulong_four_expected();
+void do_anterpolation();
+void calculate_ulong_real();
+void calculate_ulong_four();
+
+void load_benchmark_NaNaN8();
+void load_benchmark_NaNaN64();
+void load_benchmark_NaNaN512();
+void load_benchmark_NaClN8();
+void load_benchmark_NaClN64();
+void load_benchmark_NaClN512();
+void load_benchmark_CsClN2();
+void load_benchmark_CsClN16();
+void load_benchmark_CsClN128();
+void load_benchmark_changaN8();
+void load_benchmark_changaN64();
+void load_benchmark_changaN512();
+void run_benchmark(int id);
+
+int main(int argc, char *argv[]) {    
+    for (int i = 1 ; i <= 12 ; i++ )
+        run_benchmark(i);
+    return 0;
 }
 
+// Appendix A: Eq. 31 and the one before.
 double gama(double rho) {
     double out = 0.0;
     if (rho >= 1.0)
@@ -91,7 +116,7 @@ double gama(double rho) {
     return out;
 }
 
-
+// Eq.1 and 2 --> gLR(r) = erf(beta * r)/r
 double gLR(double r) {
     if (r < DBL_EPSILON)
         return 2.0 * beta / sqrt(MYPI) ;
@@ -99,29 +124,496 @@ double gLR(double r) {
         return erf(beta * r) / r ;
 }
 
+// Eq. 5 first part
 double g0(double r) {
-    return 1.0 / r    -   (1.0 / a) * gama(r/a)  ;
+    return 1/r - (1/a) * gama(r/a)  ;
 }
 
+// Eq. 15 last part when L=1
 double g1(double r) {
-    return (1.0 / a) * gama(r/a)   - gLR(r) ;
+    return (1/a) * gama(r/a) - gLR(r) ;
 }
 
+// Eq. 11 first component
+void calculate_ushort_real() {
+    ushort_real = 0.0 ;
+    for (int i = 0 ; i < N ; i++) {
+        for (int j = 0 ; j < N ; j++) {
+            if (i == j) continue;
+            for (int px = -pmax ; px <= pmax ; px++) {
+                for (int py = -pmax ; py <= pmax ; py++) {
+                    for (int pz = -pmax ; pz <= pmax ; pz++) {
+                        double rx = r[i][X] - r[j][X] - Ax * px ;
+                        double ry = r[i][Y] - r[j][Y] - Ay * py ;
+                        double rz = r[i][Z] - r[j][Z] - Az * pz ;
+                        double rlen2 = rx * rx + ry * ry + rz * rz ;
+                        double rlen = sqrt(rlen2);
+                        ushort_real += 0.5 * q[i] * q[j] * g0(rlen);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Eq. 11 second component
+void calculate_ushort_self() {
+    ushort_self = 0.0;
+    for (int i = 0 ; i < N ; i++) {
+        for (int px = -pmax ; px <= pmax ; px++) {
+            for (int py = -pmax ; py <= pmax ; py++) {
+                for (int pz = -pmax ; pz <= pmax ; pz++) {
+                    if (px == 0 && py == 0 && pz == 0) continue;
+                    double rlen2 = Ax * px * Ax * px +
+                    Ay * py * Ay * py +
+                    Az * pz * Az * pz ;
+                    double rlen = sqrt(rlen2);
+                    ushort_self += 0.5 * q[i] * q[i] * g0(rlen);
+                }
+            }
+        }
+    }
+}
+
+// Eq. 11 third component
+void calculate_ushort_csr() {
+    double csr = MYPI / (beta * beta * detA );
+    double qsum = 0.0;
+    for (int i = 0 ; i < N ; i++ )
+        qsum += q[i] ;
+    ushort_csr = - 0.5 * qsum * qsum * csr ;
+}
+
+// Eq. 12 first component for l = 1
+void calculate_ulong_real_expected() {
+    ulong_real_expected = 0.0;
+    for (int i = 0 ; i < N ; i++) {
+        for (int j = 0 ; j < N ; j++) {
+            for (int px = -pmax ; px <= pmax ; px++) {
+                for (int py = -pmax ; py <= pmax ; py++) {
+                    for (int pz = -pmax ; pz <= pmax ; pz++) {
+                        double rx = r[i][X] - r[j][X] - Ax * px ;
+                        double ry = r[i][Y] - r[j][Y] - Ay * py ;
+                        double rz = r[i][Z] - r[j][Z] - Az * pz ;
+                        double rlen2 = rx * rx + ry * ry + rz * rz ;
+                        double rlen = sqrt(rlen2);
+                        ulong_real_expected += 0.5 * q[i] * q[j] * g1(rlen);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Eq. 12 first component for l = 2 
+// coupled with Eq. 4 and 5.
+void calculate_ulong_four_expected() {
+    ulong_four_expected = 0.0;
+    ulong_four_expected_cossum = 0.0;
+    ulong_four_expected_sinsum = 0.0;
+    for (int i = 0 ; i < N ; i++) {
+        for (int j = 0 ; j < N ; j++) {
+            for (int kx = -kmax ; kx <= kmax ; kx++) {
+                for (int ky = -kmax ; ky <= kmax ; ky++) {
+                    for (int kz = -kmax ; kz <= kmax ; kz++) {
+                        if (kx == 0 && ky == 0 && kz == 0)
+                            continue;
+                        double kvecx = kx / Ax ; // Eq. 5 (kvec = A^{-1}k)
+                        double kvecy = ky / Ay ;
+                        double kvecz = kz / Az ;                        
+                        double k2 = kvecx * kvecx + kvecy * kvecy + kvecz * kvecz ;
+                        // Eq. 5
+                        double chi = (1.0/(MYPI * k2 * detA)) * exp(-MYPI * MYPI * k2 / (beta * beta));
+                        double dotprod = kvecx * (r[i][X] - r[j][X]) +
+                                         kvecy * (r[i][Y] - r[j][Y]) +
+                                         kvecz * (r[i][Z] - r[j][Z]) ;
+                        // cos and sin components in Eq. 4
+                        ulong_four_expected_cossum += 0.5 * q[i] * q[j] * chi * cos(2.0 * MYPI * dotprod) ;
+                        ulong_four_expected_sinsum += 0.5 * q[i] * q[j] * chi * sin(2.0 * MYPI * dotprod) ;
+                    }
+                }
+            }
+        }
+    }
+    // sin sum is practically zero so I take only cos sum.
+    ulong_four_expected = ulong_four_expected_cossum ;
+}
+
+// Eq. 12 second component
+// Please note that upper limit for l-sum is L+1
+// Then the sum boils down to (1/a) * gamma(0)
+void calculate_ulong_self() {
+    double q2sum = 0.0;
+    for (int i = 0 ; i < N ; i++)
+        q2sum += q[i] * q[i] ;
+    ulong_self = - 0.5 * q2sum * (1/a) * gama(0) ;
+}
+
+// The equation just after Eq. 14
+// The range for m obeys Eq. 23
+void do_anterpolation() {
+    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
+        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
+            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {
+                double sum = 0.0 ;
+                // p-sum in Eq.22
+                for (int px = -pmax ; px <= pmax ; px++) {
+                    for (int py = -pmax ; py <= pmax ; py++) {
+                        for (int pz = -pmax ; pz <= pmax ; pz++) {
+                            for (int i = 0 ; i < N ; i++) {
+                            	// s = inv(A) * r
+                                double sx = r[i][X] / Ax ;
+                                double sy = r[i][Y] / Ay ;
+                                double sz = r[i][Z] / Az ;
+                                double phix = Bspline(v, Mx * (sx - px) - mx + v/2);
+                                double phiy = Bspline(v, My * (sy - py) - my + v/2);
+                                double phiz = Bspline(v, Mz * (sz - pz) - mz + v/2);
+                                sum += phix * phiy * phiz * q[i];
+                            }
+                        }
+                    }
+                }
+                qm[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1] = sum ;
+            }
+        }
+    }
+}
+
+// Section 2.2.3
+// The range for m obeys Eq. 23
+void calculate_stencil_Kl() {
+    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
+        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
+            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {                
+                double sum = 0.0 ;                
+                for (int kx = - mu - v/2 ; kx <= mu + v/2 ; kx++) {
+                    for (int ky = - mu - v/2 ; ky <= mu + v/2 ; ky++) {
+                        for (int kz = - mu - v/2 ; kz <= mu + v/2 ; kz++) {
+                        	// omega prime is pre-precalculated
+                            double w = wprime[abs(kx)] * wprime[abs(ky)] * wprime[abs(kz)] ;
+                            // The sum in Eq. 24
+                            for (int px = -pmax ; px <= pmax ; px++) {
+                                for (int py = -pmax ; py <= pmax ; py++ ) {
+                                    for (int pz = -pmax ; pz <= pmax ; pz++) {
+                                    	// Hl in Eq. 24 is 1/M because of Eq. 27
+                                        double rx = Ax * ((mx + kx)/(double)Mx - px) ;
+                                        double ry = Ay * ((my + ky)/(double)My - py) ;
+                                        double rz = Az * ((mz + kz)/(double)Mz - pz) ;
+                                        double rlen2 = rx * rx + ry * ry + rz * rz ;
+                                        double rlen = sqrt(rlen2);
+                                        sum +=  w * g1(rlen);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Kl[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1]  = sum ;
+            }
+        }
+    }
+}
+
+// The grid potential e_m calculated for l=1
+// There is no specific equation for this in the article but it is:
+// e_m = \sum_n Kl_{m-n} q_n 
+// The range for m and n obeys Eq. 23
+void do_grid_to_grid_mapping() {
+    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
+        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
+            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {
+                
+                double sum = 0.0 ;                
+                for (int nx = - Mx/2 + 1 ; nx <= Mx/2 ; nx++) {
+                    for (int ny = - My/2 + 1 ; ny <= My/2 ; ny++) {
+                        for (int nz = - Mz/2 + 1 ; nz <= Mz/2 ; nz++) {
+                            
+                        	// Kl(m-n) is needed 
+                            int mnx = mx - nx ;
+                            int mny = my - ny ;
+                            int mnz = mz - nz ;
+                            
+                            // Kl is periodic 
+                            if (mnx < - Mx/2 + 1) { mnx += Mx ; } while (mnx < - Mx/2 + 1) ;
+                            if (mnx >   Mx/2    ) { mnx -= Mx ; } while (mnx >   Mx/2    ) ;
+                            
+                            if (mny < - My/2 + 1) { mny += My ; } while (mny < - My/2 + 1) ;
+                            if (mny >   My/2    ) { mny -= My ; } while (mny >   My/2    ) ;
+                            
+                            if (mnz < - Mz/2 + 1) { mnz += Mz ; } while (mnz < - Mz/2 + 1) ;
+                            if (mnz >   Mz/2    ) { mnz -= Mz ; } while (mnz >   Mz/2    ) ;
+                            
+                            sum += Kl[mnx + Mx/2 - 1][mny + My/2 - 1][mnz + Mz/2 - 1] *
+                                   qm[nx  + Mx/2 - 1][ny  + My/2 - 1][nz  + Mz/2 - 1] ;                           
+                        }
+                    }
+                }                
+                em[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1] = sum ;
+            }
+        }
+    }
+}
+
+// The grid potential e_m calculated for l=2 (Fourier)
+// There is no specific equation for this in the article but it is:
+// e_m = \sum_n KL_{m-n} q_n 
+// The range for m and n obeys Eq. 23
+void do_grid_to_grid_mapping_fourier() {
+    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
+        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
+            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {
+                
+                double sum = 0.0 ;                
+                for (int nx = - Mx/2 + 1 ; nx <= Mx/2 ; nx++) {
+                    for (int ny = - My/2 + 1 ; ny <= My/2 ; ny++) {
+                        for (int nz = - Mz/2 + 1 ; nz <= Mz/2 ; nz++) {
+                            
+                        	// KL(m-n) needed
+                            int mnx = mx - nx ;
+                            int mny = my - ny ;
+                            int mnz = mz - nz ;
+                            
+                            // KL is periodic
+                            if (mnx < - Mx/2 + 1) { mnx += Mx ; } while (mnx < - Mx/2 + 1) ;
+                            if (mnx >   Mx/2    ) { mnx -= Mx ; } while (mnx >   Mx/2    ) ;
+                            
+                            if (mny < - My/2 + 1) { mny += My ; } while (mny < - My/2 + 1) ;
+                            if (mny >   My/2    ) { mny -= My ; } while (mny >   My/2    ) ;
+                            
+                            if (mnz < - Mz/2 + 1) { mnz += Mz ; } while (mnz < - Mz/2 + 1) ;
+                            if (mnz >   Mz/2    ) { mnz -= Mz ; } while (mnz >   Mz/2    ) ;
+                            
+                            sum += KL[mnx + Mx/2 - 1][mny + My/2 - 1][mnz + Mz/2 - 1] *
+                                   qm[nx  + Mx/2 - 1][ny  + My/2 - 1][nz  + Mz/2 - 1] ;
+                        }
+                    }
+                }
+                em_fourier[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1] = sum ;
+            }
+        }
+    }
+}
+
+// Long-range real-sum is just 0.5 * qm^T * em
+void calculate_ulong_real() {
+	// I need stencil
+    calculate_stencil_Kl();
+    // then grid potentials 
+    do_grid_to_grid_mapping();
+    
+    ulong_real = 0.0;
+    for (int mx = 0 ; mx < Mx ; mx++) {
+        for (int my = 0 ; my < My ; my++) {
+            for (int mz = 0 ; mz < Mz ; mz++) {
+                ulong_real += 0.5 * qm[mx][my][mz] * em[mx][my][mz] ;
+            }
+        }
+    }
+}
+
+// Centered B-spline with order v - 1
+// Section 2.2.1
+double Phi(double t) {
+    return Bspline(v,t + v/2);
+}
+
+/* Eq. 35 */
+double calculate_c(double k,double M) {
+    double c = Phi(0);
+    // Use the fact that sin components cancel
+    for (int m = 1 ; m <= v/2 - 1 ; m++) {
+        c += 2 * cos(2*MYPI * k * m / M) * Phi(m) ;
+    }
+    
+    return 1/c ;
+}
+
+// Section 2.3, Eq. 29
+// The range for m obeys Eq. 23
+void calculate_stencil_KL() {
+    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
+        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
+            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {
+                
+                double sum = 0.0 ;
+                for (int kx = -kmax ; kx <= kmax ; kx++) {
+                    for (int ky = -kmax ; ky <= kmax ; ky++) {
+                        for (int kz = -kmax ; kz <= kmax ; kz++) {
+                            if (kx == 0 && ky == 0 && kz == 0)
+                                continue;
+                            double kvecx = kx / Ax ; // kvec = inv(A) * k
+                            double kvecy = ky / Ay ;
+                            double kvecz = kz / Az ;
+                            double k2 = kvecx * kvecx + kvecy * kvecy + kvecz * kvecz ;
+                            // Eq. 5
+                            double chi = (1.0/(MYPI * k2 * detA)) * exp(-MYPI * MYPI * k2 / (beta * beta));
+                            double dotprod = kx * mx / (double) Mx +
+                                             ky * my / (double) My +
+                                             kz * mz / (double) Mz ;
+                            
+                            double cx = calculate_c(kx, Mx);
+                            double cy = calculate_c(ky, My);
+                            double cz = calculate_c(kz, Mz);
+                            
+                            double c2 = cx * cx * cy * cy * cz * cz ;
+                            sum += chi * c2 * cos(2*MYPI*dotprod) ;
+                        }
+                    }
+                }
+                KL[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1]  = sum ;
+            }
+        }
+    }
+}
+
+// Potential energy for Long-range recp-sum is
+// just 0.5 * em_fourier^T * qm where
+void calculate_ulong_four() {
+	
+	// Need stencil l=2 
+    calculate_stencil_KL();
+    // Need grid potentials when l=2
+    do_grid_to_grid_mapping_fourier();
+    
+    ulong_four = 0.0;
+    for (int mx = 0 ; mx < Mx ; mx++) {
+        for (int my = 0 ; my < My ; my++) {
+            for (int mz = 0 ; mz < Mz ; mz++) {
+                ulong_four += 0.5 * qm[mx][my][mz] * em_fourier[mx][my][mz] ;
+            }
+        }
+    }
+}
+
+// Self-explanatory
+void display_results(){
+    printf("%-28s : %-20s\n","Testing...",dataname);
+    printf("%-28s : %-d\n","N" ,N);
+    printf("%-28s : %-d\n","mu",mu);
+    printf("%-28s : %-d\n","v" ,v);
+    printf("%-28s : %-d\n","kmax" ,kmax);
+    printf("%-28s : %-d\n","pmax" ,pmax);
+    printf("%-28s : %-5.2f %-5.2f %-5.2f\n","hx hy hz" ,hx,hy,hz);
+    printf("%-28s : %-5.2f %-5.2f %-5.2f\n","Ax Ay Az" ,Ax,Ay,Az);
+    printf("%-28s : %-5d %-5d %-5d\n","Mx My Mz" ,Mx,My,Mz);
+    printf("%-28s : %-25.16e\n","beta" ,beta);
+    printf("%-28s : %-25.16e\n","detA" ,detA);
+    printf("%-28s : %-25.16e\n","abar" ,abar);
+    printf("%-28s : %-25.16e\n","a" ,a);
+    printf("%-28s : %-25.16e\n","aL" ,aL);
+    printf("%-28s : %25.16e\n","ushort_real" ,ushort_real);
+    printf("%-28s : %25.16e\n","ushort_self" ,ushort_self);
+    printf("%-28s : %25.16e\n","ushort_csr"  ,ushort_csr);
+    printf("%-28s : %25.16e\n","ulong_self"  ,ulong_self);
+    printf("%-28s : %25.16e\n","ulong_real"  ,ulong_real);
+    printf("%-28s : %25.16e\n","ulong_real_expected"  ,ulong_real_expected);
+    printf("%-28s : %25.16e\n","ulong_four"  ,ulong_four);
+    printf("%-28s : %25.16e\n","ulong_four_expected_cossum"  ,ulong_four_expected_cossum);
+    printf("%-28s : %25.16e\n","ulong_four_expected_sinsum"  ,ulong_four_expected_sinsum);
+    printf("%-28s : %25.16e\n","utotal",utotal);
+    printf("%-28s : %25.16e\n","utotal_expected",utotal_expected);   
+}
+
+// I numbered all 12 benchmarks with an integer
+// I load the related data and apply MSM
+void run_benchmark(int id) {
+    switch (id) {
+        case 1:
+            load_benchmark_NaNaN8();
+            break;
+        case 2:
+            load_benchmark_NaNaN64();
+            break;
+        case 3:
+            load_benchmark_NaNaN512();
+            break;
+        case 4:
+            load_benchmark_NaClN8();
+            break;
+        case 5:
+            load_benchmark_NaClN64();
+            break;
+        case 6:
+            load_benchmark_NaClN512();
+            break;
+        case 7:
+            load_benchmark_CsClN2();
+            break;
+        case 8:
+            load_benchmark_CsClN16();
+            break;
+        case 9:
+            load_benchmark_CsClN128();
+            break;
+        case 10:
+            load_benchmark_changaN8();
+            break;
+        case 11:
+            load_benchmark_changaN64();
+            break;
+        case 12:
+            load_benchmark_changaN512();
+            break;
+        default:
+            break;
+    }
+
+    do_anterpolation();
+
+    // There is no approximated versions of these four quantities
+    calculate_ushort_real();
+    calculate_ushort_self();
+    calculate_ushort_csr();    
+    calculate_ulong_self();
+    
+    // ulong_real and ulong_four are calculated by using interpolation
+    calculate_ulong_real();
+    calculate_ulong_four();
+    
+    // For comparioson there two are direct calculations
+    calculate_ulong_real_expected();
+    calculate_ulong_four_expected();
+    
+    // Total potential energy when using interpolation for ulong_real and ulong_fourier
+    utotal  = ushort_real + ushort_self + ushort_csr +  ulong_self + 
+    		ulong_real + ulong_four ;
+    
+    // Total potential energy without interpolation
+    utotal_expected = ushort_real + ushort_self + ushort_csr + ulong_self +
+    				  ulong_real_expected + ulong_four_expected  ;
+
+    display_results();
+}
+
+// A very straightforward recursive implementation of B-splines in 2.2.1
+double Bspline(int k,double u) {
+    if (k==1) {
+        if (u >= 0 && u < 1)
+            return 1.0;
+        else
+            return 0.0;
+    } else {
+        return u/(double)(k-1) * Bspline(k-1,u) + (k-u)/(double)(k-1) * Bspline(k-1,u-1.0);
+    }
+}
+
+// N=8 case of Figure 1 in report20180327
 void load_benchmark_NaNaN8() {
     sprintf(dataname, "NaNaN8");
     N    = 8;
     Ax   = Ay = Az = 2;
     detA = Ax * Ay * Az ;
-    v    = 4;
+    v    = 4; // Please don't change v=4 because wprime
+              // in the code is only valid for v=4
     abar = 6;
     mu   = 10;
-    kmax = 10;
+    kmax = 10; 
     pmax = 10;
     h    = hL = hx = hy = hz = 1;
     Mx   = My = Mz = 2;
     a = abar * h ;
     aL = 2 * a ;
-    beta = 3.9952779973449493e-01;
+    beta = 3.9952779973449493e-01; // precalculated w.r.t Appendix B.1
     
     int nx = 2; int ny = 2 ; int nz = 2 ;
     int bodyindex = 0 ;
@@ -138,12 +630,14 @@ void load_benchmark_NaNaN8() {
     }
 }
 
+// N=64 case of Figure 1 in report20180327
 void load_benchmark_NaNaN64() {
     sprintf(dataname, "NaNaN64");
     N    = 64;
     Ax   = Ay = Az = 4;
     detA = Ax * Ay * Az ;
-    v    = 4; // don't change
+    v    = 4; // Please don't change v=4 because wprime
+              // in the code is only valid for v=4
     abar = 6;
     mu   = 10;
     kmax = 10;
@@ -169,12 +663,14 @@ void load_benchmark_NaNaN64() {
     }
 }
 
+// N=512 case of Figure 1 in report20180327
 void load_benchmark_NaNaN512() {
     sprintf(dataname, "NaNaN512");
     N    = 512;
     Ax   = Ay = Az = 8;
     detA = Ax * Ay * Az ;
-    v    = 4; // don't change
+    v    = 4; // Please don't change v=4 because wprime
+              // in the code is only valid for v=4
     abar = 6;
     mu   = 10;
     kmax = 10;
@@ -200,12 +696,14 @@ void load_benchmark_NaNaN512() {
     }
 }
 
+// N=8 case of Figure 2 in report20180327
 void load_benchmark_NaClN8() {
     sprintf(dataname, "NaClN8");
     N    = 8;
     Ax   = Ay = Az = 2;
     detA = Ax * Ay * Az ;
-    v    = 4;
+    v    = 4; // Please don't change v=4 because wprime
+              // in the code is only valid for v=4
     abar = 6;
     mu   = 10;
     kmax = 10;
@@ -231,12 +729,14 @@ void load_benchmark_NaClN8() {
     }
 }
 
+// N=64 case of Figure 2 in report20180327
 void load_benchmark_NaClN64() {
     sprintf(dataname, "NaClN64");
     N    = 64;
     Ax   = Ay = Az = 4;
     detA = Ax * Ay * Az ;
-    v    = 4; // don't change
+    v    = 4; // Please don't change v=4 because wprime
+              // in the code is only valid for v=4
     abar = 6;
     mu   = 10;
     kmax = 10;
@@ -262,12 +762,14 @@ void load_benchmark_NaClN64() {
     }
 }
 
+// N=512 case of Figure 2 in report20180327
 void load_benchmark_NaClN512() {
     sprintf(dataname, "NaClN512");
     N    = 512;
     Ax   = Ay = Az = 8;
     detA = Ax * Ay * Az ;
-    v    = 4; // don't change
+    v    = 4; // Please don't change v=4 because wprime
+              // in the code is only valid for v=4
     abar = 6;
     mu   = 10;
     kmax = 10;
@@ -293,12 +795,14 @@ void load_benchmark_NaClN512() {
     }
 }
 
+// N=2 case of Figure 3 in report20180327
 void load_benchmark_CsClN2() {
     sprintf(dataname, "CsClN2");
     N    = 2;
     Ax   = Ay = Az = 1;
     detA = Ax * Ay * Az ;
-    v    = 4; // don't change
+    v    = 4; // Please don't change v=4 because wprime
+              // in the code is only valid for v=4
     abar = 6;
     mu   = 10;
     kmax = 10;
@@ -331,13 +835,15 @@ void load_benchmark_CsClN2() {
     }
 }
 
+// N=16 case of Figure 3 in report20180327
 void load_benchmark_CsClN16() {
     sprintf(dataname, "CsClN16");
 
     N    = 16;
     Ax   = Ay = Az = 2;
     detA = Ax * Ay * Az ;
-    v    = 4; // don't change
+    v    = 4; // Please don't change v=4 because wprime
+              // in the code is only valid for v=4
     abar = 6;
     mu   = 10;
     kmax = 10;
@@ -369,12 +875,15 @@ void load_benchmark_CsClN16() {
         }
     }
 }
+
+// N=128 case of Figure 3 in report20180327
 void load_benchmark_CsClN128() {
     sprintf(dataname, "CsClN128");
     N    = 128;
     Ax   = Ay = Az = 4;
     detA = Ax * Ay * Az ;
-    v    = 4; // don't change
+    v    = 4; // Please don't change v=4 because wprime
+              // in the code is only valid for v=4
     abar = 6;
     mu   = 10;
     kmax = 10;
@@ -407,14 +916,14 @@ void load_benchmark_CsClN128() {
     }
 }
 
-
+// N=8 randomly distributed particles in unit-cube
 void load_benchmark_changaN8() {
     sprintf(dataname, "changaN8");
-
     N    = 8;
     Ax   = Ay = Az = 1;
     detA = Ax * Ay * Az ;
-    v    = 4;
+    v    = 4; // Please don't change v=4 because wprime
+              // in the code is only valid for v=4
     abar = 6;
     mu   = 10;
     kmax = 10;
@@ -434,13 +943,15 @@ void load_benchmark_changaN8() {
     r[ 7][X]= 4.682633e-01; r[ 7][Y]= 8.296577e-01; r[ 7][Z]= 7.368002e-01; q[  7]= 9.993093e-06;
 }
 
+// N=64 randomly distributed particles in unit-cube
 void load_benchmark_changaN64() {
     sprintf(dataname, "changaN64");
 
     N    = 64;
     Ax   = Ay = Az = 1;
     detA = Ax * Ay * Az ;
-    v    = 4;
+    v    = 4; // Please don't change v=4 because wprime
+              // in the code is only valid for v=4
     abar = 6;
     mu   = 10;
     kmax = 10;
@@ -516,13 +1027,14 @@ void load_benchmark_changaN64() {
     r[63][X]= 6.721672e-01; r[63][Y]= 1.791827e-01; r[63][Z]= 2.731031e-01; q[ 63]= 9.993093e-06;
 }
 
+// N=512 randomly distributed particles in unit-cube
 void load_benchmark_changaN512() {
     sprintf(dataname, "changaN512");
-
     N    = 512;
     Ax   = Ay = Az = 1;
     detA = Ax * Ay * Az ;
-    v    = 4;
+    v    = 4; // Please don't change v=4 because wprime
+              // in the code is only valid for v=4
     abar = 6;
     mu   = 10;
     kmax = 10;
@@ -1045,418 +1557,3 @@ void load_benchmark_changaN512() {
     r[510][X]= 9.604940e-01; r[510][Y]= 5.306052e-01; r[510][Z]= 9.522110e-01; q[510]= 9.993093e-06;
     r[511][X]= 2.019551e-01; r[511][Y]= 3.950060e-02; r[511][Z]= 3.419927e-01; q[511]= 9.993093e-06;
 }
-
-void calculate_ushort_real() {
-    ushort_real = 0.0 ;
-    for (int i = 0 ; i < N ; i++) {
-        for (int j = 0 ; j < N ; j++) {
-            if (i == j) continue;
-            for (int px = -pmax ; px <= pmax ; px++) {
-                for (int py = -pmax ; py <= pmax ; py++) {
-                    for (int pz = -pmax ; pz <= pmax ; pz++) {
-                        double rx = r[i][X] - r[j][X] - Ax * px ;
-                        double ry = r[i][Y] - r[j][Y] - Ay * py ;
-                        double rz = r[i][Z] - r[j][Z] - Az * pz ;
-                        double rlen2 = rx * rx + ry * ry + rz * rz ;
-                        double rlen = sqrt(rlen2);
-                        ushort_real += 0.5 * q[i] * q[j] * g0(rlen);
-                    }
-                }
-            }
-        }
-    }
-}
-
-void calculate_ushort_self() {
-    ushort_self = 0.0;
-    for (int i = 0 ; i < N ; i++) {
-        for (int px = -pmax ; px <= pmax ; px++) {
-            for (int py = -pmax ; py <= pmax ; py++) {
-                for (int pz = -pmax ; pz <= pmax ; pz++) {
-                    if (px == 0 && py == 0 && pz == 0) continue;
-                    double rlen2 = Ax * px * Ax * px +
-                    Ay * py * Ay * py +
-                    Az * pz * Az * pz ;
-                    double rlen = sqrt(rlen2);
-                    ushort_self += 0.5 * q[i] * q[i] * g0(rlen);
-                }
-            }
-        }
-    }
-}
-
-void calculate_ushort_csr() {
-    double csr = MYPI / (beta * beta * detA );
-    double qsum = 0.0;
-    for (int i = 0 ; i < N ; i++ )
-        qsum += q[i] ;
-    ushort_csr = - 0.5 * qsum * qsum * csr ;
-}
-
-void calculate_ulong_real_expected() {
-    ulong_real_expected = 0.0;
-    for (int i = 0 ; i < N ; i++) {
-        for (int j = 0 ; j < N ; j++) {
-            for (int px = -pmax ; px <= pmax ; px++) {
-                for (int py = -pmax ; py <= pmax ; py++) {
-                    for (int pz = -pmax ; pz <= pmax ; pz++) {
-                        double rx = r[i][X] - r[j][X] - Ax * px ;
-                        double ry = r[i][Y] - r[j][Y] - Ay * py ;
-                        double rz = r[i][Z] - r[j][Z] - Az * pz ;
-                        double rlen2 = rx * rx + ry * ry + rz * rz ;
-                        double rlen = sqrt(rlen2);
-                        ulong_real_expected += 0.5 * q[i] * q[j] * g1(rlen);
-                    }
-                }
-            }
-        }
-    }
-}
-
-void calculate_ulong_four_expected() {
-    ulong_four_expected = 0.0;
-    ulong_four_expected_cossum = 0.0;
-    ulong_four_expected_sinsum = 0.0;
-    for (int i = 0 ; i < N ; i++) {
-        for (int j = 0 ; j < N ; j++) {
-            for (int kx = -kmax ; kx <= kmax ; kx++) {
-                for (int ky = -kmax ; ky <= kmax ; ky++) {
-                    for (int kz = -kmax ; kz <= kmax ; kz++) {
-                        if (kx == 0 && ky == 0 && kz == 0)
-                            continue;
-                        double kvecx = kx / Ax ;
-                        double kvecy = ky / Ay ;
-                        double kvecz = kz / Az ;
-                        double k2 = kvecx * kvecx + kvecy * kvecy + kvecz * kvecz ;
-                        double chi = (1.0/(MYPI * k2 * detA)) * exp(-MYPI * MYPI * k2 / (beta * beta));
-                        double dotprod = kvecx * (r[i][X] - r[j][X]) +
-                        kvecy * (r[i][Y] - r[j][Y]) +
-                        kvecz * (r[i][Z] - r[j][Z]) ;
-                        ulong_four_expected_cossum += 0.5 * q[i] * q[j] * chi * cos(2.0 * MYPI * dotprod) ;
-                        ulong_four_expected_sinsum += 0.5 * q[i] * q[j] * chi * sin(2.0 * MYPI * dotprod) ;
-                    }
-                }
-            }
-        }
-    }
-    ulong_four_expected = ulong_four_expected_cossum ;
-}
-
-void calculate_ulong_self() {
-    double q2sum = 0.0;
-    for (int i = 0 ; i < N ; i++)
-        q2sum += q[i] * q[i] ;
-    ulong_self = - 0.5 * q2sum * (1/a) * gama(0) ;
-}
-
-void do_anterpolation() {
-    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
-        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
-            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {
-                double sum = 0.0 ;
-                // p-sum in Eq.22
-                for (int px = -pmax ; px <= pmax ; px++) {
-                    for (int py = -pmax ; py <= pmax ; py++) {
-                        for (int pz = -pmax ; pz <= pmax ; pz++) {
-                            for (int i = 0 ; i < N ; i++) {
-                                double sx = r[i][X] / Ax ;
-                                double sy = r[i][Y] / Ay ;
-                                double sz = r[i][Z] / Az ;
-                                double phix = Bspline(v, Mx * (sx - px) - mx + v/2);
-                                double phiy = Bspline(v, My * (sy - py) - my + v/2);
-                                double phiz = Bspline(v, Mz * (sz - pz) - mz + v/2);
-                                sum += phix * phiy * phiz * q[i];
-                            }
-                        }
-                    }
-                }
-                qm[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1] = sum ;
-            }
-        }
-    }
-}
-
-void calculate_stencil_Kl() {
-    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
-        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
-            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {
-                
-                double sum = 0.0 ;
-                
-                for (int kx = - mu - v/2 ; kx <= mu + v/2 ; kx++) {
-                    for (int ky = - mu - v/2 ; ky <= mu + v/2 ; ky++) {
-                        for (int kz = - mu - v/2 ; kz <= mu + v/2 ; kz++) {
-                            double w = wprime[abs(kx)] * wprime[abs(ky)] * wprime[abs(kz)] ;
-                            for (int px = -pmax ; px <= pmax ; px++) {
-                                for (int py = -pmax ; py <= pmax ; py++ ) {
-                                    for (int pz = -pmax ; pz <= pmax ; pz++) {
-                                        double rx = Ax * ((mx + kx)/(double)Mx - px) ;
-                                        double ry = Ay * ((my + ky)/(double)My - py) ;
-                                        double rz = Az * ((mz + kz)/(double)Mz - pz) ;
-                                        double rlen2 = rx * rx + ry * ry + rz * rz ;
-                                        double rlen = sqrt(rlen2);
-                                        sum +=  w * g1(rlen);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                Kl[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1]  = sum ;
-            }
-        }
-    }
-}
-
-void do_grid_to_grid_mapping() {
-    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
-        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
-            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {
-                
-                double sum = 0.0 ;
-                
-                for (int nx = - Mx/2 + 1 ; nx <= Mx/2 ; nx++) {
-                    for (int ny = - My/2 + 1 ; ny <= My/2 ; ny++) {
-                        for (int nz = - Mz/2 + 1 ; nz <= Mz/2 ; nz++) {
-                            
-                            int mnx = mx - nx ;
-                            int mny = my - ny ;
-                            int mnz = mz - nz ;
-                            
-                            if (mnx < - Mx/2 + 1) { mnx += Mx ; } while (mnx < - Mx/2 + 1) ;
-                            if (mnx >   Mx/2    ) { mnx -= Mx ; } while (mnx >   Mx/2    ) ;
-                            
-                            if (mny < - My/2 + 1) { mny += My ; } while (mny < - My/2 + 1) ;
-                            if (mny >   My/2    ) { mny -= My ; } while (mny >   My/2    ) ;
-                            
-                            if (mnz < - Mz/2 + 1) { mnz += Mz ; } while (mnz < - Mz/2 + 1) ;
-                            if (mnz >   Mz/2    ) { mnz -= Mz ; } while (mnz >   Mz/2    ) ;
-                            
-                            sum += Kl[mnx + Mx/2 - 1][mny + My/2 - 1][mnz + Mz/2 - 1] *
-                            qm[nx  + Mx/2 - 1][ny  + My/2 - 1][nz  + Mz/2 - 1] ;
-                            
-                        }
-                    }
-                }
-                
-                em[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1] = sum ;
-                
-            }
-        }
-    }
-}
-
-void do_grid_to_grid_mapping_fourier() {
-    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
-        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
-            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {
-                
-                double sum = 0.0 ;
-                
-                for (int nx = - Mx/2 + 1 ; nx <= Mx/2 ; nx++) {
-                    for (int ny = - My/2 + 1 ; ny <= My/2 ; ny++) {
-                        for (int nz = - Mz/2 + 1 ; nz <= Mz/2 ; nz++) {
-                            
-                            int mnx = mx - nx ;
-                            int mny = my - ny ;
-                            int mnz = mz - nz ;
-                            
-                            if (mnx < - Mx/2 + 1) { mnx += Mx ; } while (mnx < - Mx/2 + 1) ;
-                            if (mnx >   Mx/2    ) { mnx -= Mx ; } while (mnx >   Mx/2    ) ;
-                            
-                            if (mny < - My/2 + 1) { mny += My ; } while (mny < - My/2 + 1) ;
-                            if (mny >   My/2    ) { mny -= My ; } while (mny >   My/2    ) ;
-                            
-                            if (mnz < - Mz/2 + 1) { mnz += Mz ; } while (mnz < - Mz/2 + 1) ;
-                            if (mnz >   Mz/2    ) { mnz -= Mz ; } while (mnz >   Mz/2    ) ;
-                            
-                            sum += KL[mnx + Mx/2 - 1][mny + My/2 - 1][mnz + Mz/2 - 1] *
-                            qm[nx  + Mx/2 - 1][ny  + My/2 - 1][nz  + Mz/2 - 1] ;
-                            
-                        }
-                    }
-                }
-                
-                em_fourier[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1] = sum ;
-                
-            }
-        }
-    }
-}
-
-void calculate_ulong_real() {
-    calculate_stencil_Kl();
-    do_grid_to_grid_mapping();
-    
-    ulong_real = 0.0;
-    for (int mx = 0 ; mx < Mx ; mx++) {
-        for (int my = 0 ; my < My ; my++) {
-            for (int mz = 0 ; mz < Mz ; mz++) {
-                ulong_real += 0.5 * qm[mx][my][mz] * em[mx][my][mz] ;
-            }
-        }
-    }
-}
-double Phi(double t) {
-    return Bspline(v,t + v/2);
-}
-
-/* Eq. 35 */
-double calculate_c(double k,double M) {
-    double c = Phi(0);
-    
-    for (int m = 1 ; m <= v/2 - 1 ; m++) {
-        c += 2 * cos(2*MYPI * k * m / M) * Phi(m) ;
-    }
-    
-    return 1/c ;
-}
-void calculate_stencil_KL() {
-    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
-        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
-            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {
-                
-                double sum = 0.0 ;
-                for (int kx = -kmax ; kx <= kmax ; kx++) {
-                    for (int ky = -kmax ; ky <= kmax ; ky++) {
-                        for (int kz = -kmax ; kz <= kmax ; kz++) {
-                            if (kx == 0 && ky == 0 && kz == 0)
-                                continue;
-                            double kvecx = kx / Ax ;
-                            double kvecy = ky / Ay ;
-                            double kvecz = kz / Az ;
-                            double k2 = kvecx * kvecx + kvecy * kvecy + kvecz * kvecz ;
-                            double chi = (1.0/(MYPI * k2 * detA)) * exp(-MYPI * MYPI * k2 / (beta * beta));
-                            double dotprod = kx * mx / (double) Mx +
-                            ky * my / (double) My +
-                            kz * mz / (double) Mz ;
-                            
-                            double cx = calculate_c(kx, Mx);
-                            double cy = calculate_c(ky, My);
-                            double cz = calculate_c(kz, Mz);
-                            
-                            double c2 = cx * cx * cy * cy * cz * cz ;
-                            sum += chi * c2 * cos(2*MYPI*dotprod) ;
-                            
-                        }
-                    }
-                }
-                KL[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1]  = sum ;
-            }
-        }
-    }
-}
-
-void calculate_ulong_four() {
-    calculate_stencil_KL();
-    do_grid_to_grid_mapping_fourier();
-    
-    ulong_four = 0.0;
-    for (int mx = 0 ; mx < Mx ; mx++) {
-        for (int my = 0 ; my < My ; my++) {
-            for (int mz = 0 ; mz < Mz ; mz++) {
-                ulong_four += 0.5 * qm[mx][my][mz] * em_fourier[mx][my][mz] ;
-            }
-        }
-    }
-}
-
-void display_results(){
-    printf("%-28s : %-20s\n","Testing...",dataname);
-    printf("%-28s : %-d\n","N" ,N);
-    printf("%-28s : %-d\n","mu",mu);
-    printf("%-28s : %-d\n","v" ,v);
-    printf("%-28s : %-d\n","kmax" ,kmax);
-    printf("%-28s : %-d\n","pmax" ,pmax);
-    printf("%-28s : %-5.2f %-5.2f %-5.2f\n","hx hy hz" ,hx,hy,hz);
-    printf("%-28s : %-5.2f %-5.2f %-5.2f\n","Ax Ay Az" ,Ax,Ay,Az);
-    printf("%-28s : %-5d %-5d %-5d\n","Mx My Mz" ,Mx,My,Mz);
-    printf("%-28s : %-25.16e\n","beta" ,beta);
-    printf("%-28s : %-25.16e\n","detA" ,detA);
-    printf("%-28s : %-25.16e\n","abar" ,abar);
-    printf("%-28s : %-25.16e\n","a" ,a);
-    printf("%-28s : %-25.16e\n","aL" ,aL);
-    printf("%-28s : %25.16e\n","ushort_real" ,ushort_real);
-    printf("%-28s : %25.16e\n","ushort_self" ,ushort_self);
-    printf("%-28s : %25.16e\n","ushort_csr"  ,ushort_csr);
-    printf("%-28s : %25.16e\n","ulong_self"  ,ulong_self);
-    printf("%-28s : %25.16e\n","ulong_real"  ,ulong_real);
-    printf("%-28s : %25.16e\n","ulong_real_expected"  ,ulong_real_expected);
-    printf("%-28s : %25.16e\n","ulong_four"  ,ulong_four);
-    printf("%-28s : %25.16e\n","ulong_four_expected_cossum"  ,ulong_four_expected_cossum);
-    printf("%-28s : %25.16e\n","ulong_four_expected_sinsum"  ,ulong_four_expected_sinsum);
-    printf("%-28s : %25.16e\n","utotal",utotal);
-    printf("%-28s : %25.16e\n","utotal_expected",utotal_expected);
-    
-}
-
-void run_benchmark(int id) {
-    switch (id) {
-        case 1:
-            load_benchmark_NaNaN8();
-            break;
-        case 2:
-            load_benchmark_NaNaN64();
-            break;
-        case 3:
-            load_benchmark_NaNaN512();
-            break;
-        case 4:
-            load_benchmark_NaClN8();
-            break;
-        case 5:
-            load_benchmark_NaClN64();
-            break;
-        case 6:
-            load_benchmark_NaClN512();
-            break;
-        case 7:
-            load_benchmark_CsClN2();
-            break;
-        case 8:
-            load_benchmark_CsClN16();
-            break;
-        case 9:
-            load_benchmark_CsClN128();
-            break;
-        case 10:
-            load_benchmark_changaN8();
-            break;
-        case 11:
-            load_benchmark_changaN64();
-            break;
-        case 12:
-            load_benchmark_changaN512();
-            break;
-        default:
-            break;
-    }
-    calculate_ushort_real();
-    calculate_ushort_self();
-    calculate_ushort_csr();
-    
-    calculate_ulong_self();
-    
-    calculate_ulong_real_expected();
-    calculate_ulong_four_expected();
-    
-    do_anterpolation();
-    calculate_ulong_real();
-    calculate_ulong_four();
-    
-    utotal_expected = ushort_real + ushort_self + ushort_csr + ulong_real_expected +
-    ulong_four_expected + ulong_self ;
-    utotal  = ushort_real + ushort_self + ushort_csr + ulong_real +
-    ulong_four + ulong_self ;
-    display_results();
-}
-int main(int argc, char *argv[]) {
-    
-    for (int i = 1 ; i <= 12 ; i++ )
-        run_benchmark(i);
-    
-    
-    
-    return 0;
-}
-
