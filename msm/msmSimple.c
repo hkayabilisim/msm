@@ -13,8 +13,9 @@
 #define SMAX  100
 #define MYPI  3.141592653589793238462643
 
-// Pre-preprocessed for v=4 and mu=10
-double wprime[13] = {
+// Pre-preprocessed for v=4 and mu=10 
+// run report20171122/apppendixC(4,10)
+/* double wprime[13] = {
      3.4641016151377539e+00, // 0
     -1.7320508075688767e+00,
      6.7949192431122685e-01,
@@ -27,10 +28,19 @@ double wprime[13] = {
     -2.1633348486544432e-04,
      6.1410409127506203e-05,  // 10
     -1.4537930745802521e-05,
-     1.9569521248038610e-06}; // 10 + v/2 (v=4)
+     1.9569521248038610e-06}; // 10 + v/2 (v=4) */
+
+double wprime[5] = {
+		   3.4641016151377539e+00,
+		  -1.7235390029754101e+00,
+		   6.4273441009183618e-01,
+		  -1.7702963774851166e-01,
+		   2.5783423063208574e-02
+};
 
 int N ;                    // # particles
 int Mx, My, Mz ;           // # grid points
+int Mxmin,Mxmax,Mymin,Mymax,Mzmin,Mzmax;
 int v;                     // B-spline (v=4)
 int mu;                    // Quasi-interpolation (mu=10) 
 int kmax;                  // # wavenumbers in Fourier sum
@@ -70,6 +80,7 @@ double gama(double rho);         // Eq.31 and the one before
 double gLR(double r);            // Eq.1 and 2
 double g0(double r);             // Eq.15 first part
 double g1(double r);             // Eq.15 last part
+double choosebeta(double aL);    // changed from Appendix B.1 
 
 void calculate_ushort_real();
 void calculate_ushort_self();
@@ -93,16 +104,64 @@ void load_benchmark_CsClN128();
 void load_benchmark_changaN8();
 void load_benchmark_changaN64();
 void load_benchmark_changaN512();
-void run_benchmark(int id);
+void load_benchmark(int id);
+void run_msm();
 
-int main(int argc, char *argv[]) {    
-    for (int i = 1 ; i <= 12 ; i++ )
-        run_benchmark(i);
+int main(int argc, char *argv[]) {
+    if (argc < 3) {
+        fprintf(stderr,"Usage: %s testid abar\n",argv[0]);
+        fprintf(stderr,"  testid = 1 --> NaNaN8\n");
+        fprintf(stderr,"  testid = 2 --> NaNaN64\n");
+        fprintf(stderr,"  testid = 3 --> NaNaN512\n");
+        fprintf(stderr,"  testid = 4 --> NaClN8\n");
+        fprintf(stderr,"  testid = 5 --> NaClN64\n");
+        fprintf(stderr,"  testid = 6 --> NaClN512\n");
+        fprintf(stderr,"  testid = 7 --> CsClN2\n");
+        fprintf(stderr,"  testid = 8 --> CsClN16\n");
+        fprintf(stderr,"  testid = 9 --> CsClN128\n");
+        fprintf(stderr,"  testid =10 --> changaN8\n");
+        fprintf(stderr,"  testid =11 --> changaN64\n");
+        fprintf(stderr,"  testid =12 --> changaN512\n");
+        return 1;
+    }
+    int id = atoi(argv[1]);
+    
+    load_benchmark(id);
+    abar = atof(argv[2]);
+    a = abar * h ;
+    aL = 2 * a ;
+    beta = choosebeta(aL);
+    run_msm();
+    
     return 0;
 }
 
+
+double choosebeta(double aL){
+    double e = 1e-15;
+
+    double a = 0;
+    double b = 20;
+    double fa = erfc(a*aL)/aL;
+
+    int iter = 1;
+    int maxiter = 200;
+    while (fabs(fa-e)/fabs(e) > 1e-14 && iter < maxiter) {
+        //printf("%3d %25.16e %25.16e %25.16e %25.16e\n",iter,a,b,fa,fb);
+        double middle = (a+b)/2;
+        double fmiddle = erfc(middle*aL)/aL;
+        if (fmiddle > e) {
+            a = middle;
+            fa = fmiddle;
+        } else {
+            b = middle;
+        }
+        iter++;
+    }
+    return a;
+}
 // Appendix A: Eq. 31 and the one before.
-double gama(double rho) {
+/* double gama(double rho) {
     double out = 0.0;
     if (rho >= 1.0)
         out = 1.0 / rho ;
@@ -111,6 +170,21 @@ double gama(double rho) {
         for (int k = 0 ; k < v ; k++) {
             double binom = tgamma(0.5)/(tgamma(k+1)*tgamma(0.5-k)) ;
             out += binom * pow(rho2-1.0 , k);
+        }
+    }
+    return out;
+} */
+
+// Appendix A. Eq 31 with Horner's rule. Bob's code.
+double gama(double rho) {
+    double out;
+    if (rho >= 1.0)
+        out = 1.0 / rho ;
+    else {
+        double  rho2m1 = rho * rho - 1.0;
+		  out = 1.0;
+        for (int k = v-1 ; k >= 1 ; k--) {
+			  out = 1.0 + (0.5 - k)/k*rho2m1*out;
         }
     }
     return out;
@@ -189,9 +263,16 @@ void calculate_ulong_real_expected() {
     ulong_real_expected = 0.0;
     for (int i = 0 ; i < N ; i++) {
         for (int j = 0 ; j < N ; j++) {
-            for (int px = -pmax ; px <= pmax ; px++) {
-                for (int py = -pmax ; py <= pmax ; py++) {
-                    for (int pz = -pmax ; pz <= pmax ; pz++) {
+        	// choose p s.t |ri-rj-Ap|<a_L
+        	int pxmin = (r[i][X] - r[j][X] - aL) / Ax ;
+        	int pxmax = (r[i][X] - r[j][X] + aL) / Ax ;
+        	int pymin = (r[i][Y] - r[j][Y] - aL) / Ay ;
+        	int pymax = (r[i][Y] - r[j][Y] + aL) / Ay ;
+        	int pzmin = (r[i][Z] - r[j][Z] - aL) / Az ;
+        	int pzmax = (r[i][Z] - r[j][Z] + aL) / Az ;
+            for (int px = pxmin ; px <= pxmax ; px++) {
+                for (int py = pymin ; py <= pymax ; py++) {
+                    for (int pz = pzmin ; pz <= pzmax ; pz++) {
                         double rx = r[i][X] - r[j][X] - Ax * px ;
                         double ry = r[i][Y] - r[j][Y] - Ay * py ;
                         double rz = r[i][Z] - r[j][Z] - Az * pz ;
@@ -252,9 +333,9 @@ void calculate_ulong_self() {
 // The equation just after Eq. 14
 // The range for m obeys Eq. 23
 void do_anterpolation() {
-    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
-        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
-            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {
+    for (int mx = Mxmin ; mx <= Mxmax ; mx++) {
+        for (int my = Mymin ; my <= Mymax ; my++) {
+            for (int mz = Mzmin ; mz <= Mzmax ; mz++) {
                 double sum = 0.0 ;
                 // p-sum in Eq.22
                 for (int px = -pmax ; px <= pmax ; px++) {
@@ -273,7 +354,7 @@ void do_anterpolation() {
                         }
                     }
                 }
-                qm[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1] = sum ;
+                qm[mx - Mxmin][my - Mymin][mz - Mzmin] = sum ;
             }
         }
     }
@@ -282,9 +363,9 @@ void do_anterpolation() {
 // Section 2.2.3
 // The range for m obeys Eq. 23
 void calculate_stencil_Kl() {
-    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
-        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
-            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {                
+    for (int mx = Mxmin ; mx <= Mxmax ; mx++) {
+        for (int my = Mymin ; my <= Mymax ; my++) {
+            for (int mz = Mzmin ; mz <= Mzmax ; mz++) {                
                 double sum = 0.0 ;                
                 for (int kx = - mu - v/2 ; kx <= mu + v/2 ; kx++) {
                     for (int ky = - mu - v/2 ; ky <= mu + v/2 ; ky++) {
@@ -292,9 +373,16 @@ void calculate_stencil_Kl() {
                         	// omega prime is pre-precalculated
                             double w = wprime[abs(kx)] * wprime[abs(ky)] * wprime[abs(kz)] ;
                             // The sum in Eq. 24
-                            for (int px = -pmax ; px <= pmax ; px++) {
-                                for (int py = -pmax ; py <= pmax ; py++ ) {
-                                    for (int pz = -pmax ; pz <= pmax ; pz++) {
+                            // choose p s.t rlen < aL
+                            int pxmin = (mx + kx)/(double)Mx - aL / Ax ;
+                            int pxmax = (mx + kx)/(double)Mx + aL / Ax ;
+                            int pymin = (my + ky)/(double)My - aL / Ay ;
+                            int pymax = (my + ky)/(double)My + aL / Ay ;
+                            int pzmin = (mz + kz)/(double)Mz - aL / Az ;
+                            int pzmax = (mz + kz)/(double)Mz + aL / Az ;
+                            for (int px = pxmin ; px <= pxmax ; px++) {
+                                for (int py = pymin ; py <= pymax ; py++ ) {
+                                    for (int pz = pzmin ; pz <= pzmax ; pz++) {
                                     	// Hl in Eq. 24 is 1/M because of Eq. 27
                                         double rx = Ax * ((mx + kx)/(double)Mx - px) ;
                                         double ry = Ay * ((my + ky)/(double)My - py) ;
@@ -308,7 +396,7 @@ void calculate_stencil_Kl() {
                         }
                     }
                 }
-                Kl[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1]  = sum ;
+                Kl[mx - Mxmin][my - Mymin][mz - Mzmin]  = sum ;
             }
         }
     }
@@ -319,14 +407,14 @@ void calculate_stencil_Kl() {
 // e_m = \sum_n Kl_{m-n} q_n 
 // The range for m and n obeys Eq. 23
 void do_grid_to_grid_mapping() {
-    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
-        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
-            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {
+    for (int mx = Mxmin ; mx <= Mxmax ; mx++) {
+        for (int my = Mymin ; my <= Mymax ; my++) {
+            for (int mz = Mzmin ; mz <= Mzmax ; mz++) {
                 
                 double sum = 0.0 ;                
-                for (int nx = - Mx/2 + 1 ; nx <= Mx/2 ; nx++) {
-                    for (int ny = - My/2 + 1 ; ny <= My/2 ; ny++) {
-                        for (int nz = - Mz/2 + 1 ; nz <= Mz/2 ; nz++) {
+                for (int nx = Mxmin ; nx <= Mxmax ; nx++) {
+                    for (int ny = Mymin ; ny <= Mymax ; ny++) {
+                        for (int nz = Mzmin ; nz <= Mzmax ; nz++) {
                             
                         	// Kl(m-n) is needed 
                             int mnx = mx - nx ;
@@ -334,21 +422,21 @@ void do_grid_to_grid_mapping() {
                             int mnz = mz - nz ;
                             
                             // Kl is periodic 
-                            if (mnx < - Mx/2 + 1) { mnx += Mx ; } while (mnx < - Mx/2 + 1) ;
-                            if (mnx >   Mx/2    ) { mnx -= Mx ; } while (mnx >   Mx/2    ) ;
+                            if (mnx < Mxmin) do { mnx += Mx ; } while (mnx < Mxmin) ;
+                            if (mnx > Mxmax) do { mnx -= Mx ; } while (mnx > Mxmax) ;
                             
-                            if (mny < - My/2 + 1) { mny += My ; } while (mny < - My/2 + 1) ;
-                            if (mny >   My/2    ) { mny -= My ; } while (mny >   My/2    ) ;
+                            if (mny < Mymin) do { mny += My ; } while (mny < Mymin) ;
+                            if (mny > Mymax) do { mny -= My ; } while (mny > Mymax) ;
                             
-                            if (mnz < - Mz/2 + 1) { mnz += Mz ; } while (mnz < - Mz/2 + 1) ;
-                            if (mnz >   Mz/2    ) { mnz -= Mz ; } while (mnz >   Mz/2    ) ;
+                            if (mnz < Mzmin) do { mnz += Mz ; } while (mnz < Mzmin) ;
+                            if (mnz > Mzmax) do { mnz -= Mz ; } while (mnz > Mzmax) ;
                             
-                            sum += Kl[mnx + Mx/2 - 1][mny + My/2 - 1][mnz + Mz/2 - 1] *
-                                   qm[nx  + Mx/2 - 1][ny  + My/2 - 1][nz  + Mz/2 - 1] ;                           
+                            sum += Kl[mnx - Mxmin][mny - Mymin][mnz - Mzmin] *
+                                   qm[nx - Mxmin][ny - Mymin][nz - Mzmin] ;                           
                         }
                     }
                 }                
-                em[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1] = sum ;
+                em[mx - Mxmin][my - Mymin][mz - Mzmin] = sum ;
             }
         }
     }
@@ -359,14 +447,14 @@ void do_grid_to_grid_mapping() {
 // e_m = \sum_n KL_{m-n} q_n 
 // The range for m and n obeys Eq. 23
 void do_grid_to_grid_mapping_fourier() {
-    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
-        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
-            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {
+    for (int mx = Mxmin ; mx <= Mxmax ; mx++) {
+        for (int my = Mymin ; my <= Mymax ; my++) {
+            for (int mz = Mzmin ; mz <= Mzmax ; mz++) {
                 
                 double sum = 0.0 ;                
-                for (int nx = - Mx/2 + 1 ; nx <= Mx/2 ; nx++) {
-                    for (int ny = - My/2 + 1 ; ny <= My/2 ; ny++) {
-                        for (int nz = - Mz/2 + 1 ; nz <= Mz/2 ; nz++) {
+                for (int nx = Mxmin ; nx <= Mxmax ; nx++) {
+                    for (int ny = Mymin ; ny <= Mymax ; ny++) {
+                        for (int nz = Mzmin ; nz <= Mzmax ; nz++) {
                             
                         	// KL(m-n) needed
                             int mnx = mx - nx ;
@@ -374,21 +462,21 @@ void do_grid_to_grid_mapping_fourier() {
                             int mnz = mz - nz ;
                             
                             // KL is periodic
-                            if (mnx < - Mx/2 + 1) { mnx += Mx ; } while (mnx < - Mx/2 + 1) ;
-                            if (mnx >   Mx/2    ) { mnx -= Mx ; } while (mnx >   Mx/2    ) ;
+                            if (mnx < Mxmin) do { mnx += Mx ; } while (mnx < Mxmin) ;
+                            if (mnx > Mxmax) do { mnx -= Mx ; } while (mnx > Mxmax) ;
                             
-                            if (mny < - My/2 + 1) { mny += My ; } while (mny < - My/2 + 1) ;
-                            if (mny >   My/2    ) { mny -= My ; } while (mny >   My/2    ) ;
+                            if (mny < Mymin) do { mny += My ; } while (mny < Mymin) ;
+                            if (mny > Mymax) do { mny -= My ; } while (mny > Mymax) ;
                             
-                            if (mnz < - Mz/2 + 1) { mnz += Mz ; } while (mnz < - Mz/2 + 1) ;
-                            if (mnz >   Mz/2    ) { mnz -= Mz ; } while (mnz >   Mz/2    ) ;
+                            if (mnz < Mzmin) do { mnz += Mz ; } while (mnz < Mzmin) ;
+                            if (mnz > Mzmax) do { mnz -= Mz ; } while (mnz > Mzmax) ;
                             
-                            sum += KL[mnx + Mx/2 - 1][mny + My/2 - 1][mnz + Mz/2 - 1] *
-                                   qm[nx  + Mx/2 - 1][ny  + My/2 - 1][nz  + Mz/2 - 1] ;
+                            sum += KL[mnx - Mxmin][mny - Mymin][mnz - Mzmin] *
+                                   qm[nx  - Mxmin][ny  - Mymin][nz  - Mzmin] ;
                         }
                     }
                 }
-                em_fourier[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1] = sum ;
+                em_fourier[mx - Mxmin][my - Mymin][mz - Mzmin] = sum ;
             }
         }
     }
@@ -431,9 +519,9 @@ double calculate_c(double k,double M) {
 // Section 2.3, Eq. 29
 // The range for m obeys Eq. 23
 void calculate_stencil_KL() {
-    for (int mx = - Mx/2 + 1 ; mx <= Mx/2 ; mx++) {
-        for (int my = - My/2 + 1 ; my <= My/2 ; my++) {
-            for (int mz = - Mz/2 + 1 ; mz <= Mz/2 ; mz++) {
+    for (int mx = Mxmin ; mx <= Mxmax ; mx++) {
+        for (int my = Mymin ; my <= Mymax ; my++) {
+            for (int mz = Mzmin ; mz <= Mzmax ; mz++) {
                 
                 double sum = 0.0 ;
                 for (int kx = -kmax ; kx <= kmax ; kx++) {
@@ -460,7 +548,7 @@ void calculate_stencil_KL() {
                         }
                     }
                 }
-                KL[mx + Mx/2 - 1][my + My/2 - 1][mz + Mz/2 - 1]  = sum ;
+                KL[mx - Mxmin][my - Mymin][mz - Mzmin]  = sum ;
             }
         }
     }
@@ -489,34 +577,34 @@ void calculate_ulong_four() {
 void display_results(){
     printf("%-28s : %-20s\n","Testing...",dataname);
     printf("%-28s : %-d\n","N" ,N);
-    printf("%-28s : %-d\n","mu",mu);
-    printf("%-28s : %-d\n","v" ,v);
-    printf("%-28s : %-d\n","kmax" ,kmax);
-    printf("%-28s : %-d\n","pmax" ,pmax);
-    printf("%-28s : %-5.2f %-5.2f %-5.2f\n","hx hy hz" ,hx,hy,hz);
-    printf("%-28s : %-5.2f %-5.2f %-5.2f\n","Ax Ay Az" ,Ax,Ay,Az);
-    printf("%-28s : %-5d %-5d %-5d\n","Mx My Mz" ,Mx,My,Mz);
-    printf("%-28s : %-25.16e\n","beta" ,beta);
-    printf("%-28s : %-25.16e\n","detA" ,detA);
-    printf("%-28s : %-25.16e\n","abar" ,abar);
-    printf("%-28s : %-25.16e\n","a" ,a);
-    printf("%-28s : %-25.16e\n","aL" ,aL);
-    printf("%-28s : %25.16e\n","ushort_real" ,ushort_real);
-    printf("%-28s : %25.16e\n","ushort_self" ,ushort_self);
-    printf("%-28s : %25.16e\n","ushort_csr"  ,ushort_csr);
-    printf("%-28s : %25.16e\n","ulong_self"  ,ulong_self);
-    printf("%-28s : %25.16e\n","ulong_real"  ,ulong_real);
-    printf("%-28s : %25.16e\n","ulong_real_expected"  ,ulong_real_expected);
-    printf("%-28s : %25.16e\n","ulong_four"  ,ulong_four);
-    printf("%-28s : %25.16e\n","ulong_four_expected_cossum"  ,ulong_four_expected_cossum);
-    printf("%-28s : %25.16e\n","ulong_four_expected_sinsum"  ,ulong_four_expected_sinsum);
-    printf("%-28s : %25.16e\n","utotal",utotal);
-    printf("%-28s : %25.16e\n","utotal_expected",utotal_expected);   
+    printf("%-28s  %-d\n","mu",mu);
+    printf("%-28s  %-d\n","v" ,v);
+    printf("%-28s  %-d\n","kmax" ,kmax);
+    printf("%-28s  %-d\n","pmax" ,pmax);
+    printf("%-28s  %-5.2f %-5.2f %-5.2f\n","hx hy hz" ,hx,hy,hz);
+    printf("%-28s  %-5.2f %-5.2f %-5.2f\n","Ax Ay Az" ,Ax,Ay,Az);
+    printf("%-28s  %-5d %-5d %-5d\n","Mx My Mz" ,Mx,My,Mz);
+    printf("%-28s  %-25.16e\n","beta" ,beta);
+    printf("%-28s  %-25.16e\n","detA" ,detA);
+    printf("%-28s  %-25.16e\n","abar" ,abar);
+    printf("%-28s  %-25.16e\n","a" ,a);
+    printf("%-28s  %-25.16e\n","aL" ,aL);
+    printf("%-28s  %25.16e\n","ushort_real" ,ushort_real);
+    printf("%-28s  %25.16e\n","ushort_self" ,ushort_self);
+    printf("%-28s  %25.16e\n","ushort_csr"  ,ushort_csr);
+    printf("%-28s  %25.16e\n","ulong_self"  ,ulong_self);
+    printf("%-28s  %25.16e\n","ulong_real"  ,ulong_real);
+    printf("%-28s  %25.16e\n","ulong_real_expected"  ,ulong_real_expected);
+    printf("%-28s  %25.16e\n","ulong_real_relerr"  ,fabs(ulong_real_expected-ulong_real)/fabs(ulong_real_expected));
+    printf("%-28s  %25.16e\n","ulong_four"  ,ulong_four);
+    printf("%-28s  %25.16e\n","ulong_four_expected_cossum"  ,ulong_four_expected_cossum);
+    printf("%-28s  %25.16e\n","ulong_four_expected_sinsum"  ,ulong_four_expected_sinsum);
+    printf("%-28s  %25.16e\n","utotal",utotal);
+    printf("%-28s  %25.16e\n","utotal_expected",utotal_expected);
+    printf("%-28s  %25.16e\n","utotal_relerr",fabs(utotal_expected-utotal)/fabs(utotal_expected));
 }
 
-// I numbered all 12 benchmarks with an integer
-// I load the related data and apply MSM
-void run_benchmark(int id) {
+void load_benchmark(int id) {
     switch (id) {
         case 1:
             load_benchmark_NaNaN8();
@@ -557,7 +645,15 @@ void run_benchmark(int id) {
         default:
             break;
     }
-
+}
+// I numbered all 12 benchmarks with an integer
+// I load the related data and apply MSM
+void run_msm() {
+	
+	Mxmin = - (Mx-1)/2; Mxmax = Mx/2 ;
+	Mymin = - (My-1)/2; Mymax = My/2 ;
+	Mzmin = - (Mz-1)/2; Mzmax = Mz/2 ;
+	
     do_anterpolation();
 
     // There is no approximated versions of these four quantities
@@ -606,7 +702,7 @@ void load_benchmark_NaNaN8() {
     v    = 4; // Please don't change v=4 because wprime
               // in the code is only valid for v=4
     abar = 6;
-    mu   = 10;
+    mu   = 2;
     kmax = 10; 
     pmax = 10;
     h    = hL = hx = hy = hz = 1;
@@ -639,7 +735,7 @@ void load_benchmark_NaNaN64() {
     v    = 4; // Please don't change v=4 because wprime
               // in the code is only valid for v=4
     abar = 6;
-    mu   = 10;
+    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 1;
@@ -672,7 +768,7 @@ void load_benchmark_NaNaN512() {
     v    = 4; // Please don't change v=4 because wprime
               // in the code is only valid for v=4
     abar = 6;
-    mu   = 10;
+    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 1;
@@ -705,7 +801,7 @@ void load_benchmark_NaClN8() {
     v    = 4; // Please don't change v=4 because wprime
               // in the code is only valid for v=4
     abar = 6;
-    mu   = 10;
+    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 1;
@@ -738,7 +834,7 @@ void load_benchmark_NaClN64() {
     v    = 4; // Please don't change v=4 because wprime
               // in the code is only valid for v=4
     abar = 6;
-    mu   = 10;
+    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 1;
@@ -771,7 +867,7 @@ void load_benchmark_NaClN512() {
     v    = 4; // Please don't change v=4 because wprime
               // in the code is only valid for v=4
     abar = 6;
-    mu   = 10;
+    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 1;
@@ -804,7 +900,7 @@ void load_benchmark_CsClN2() {
     v    = 4; // Please don't change v=4 because wprime
               // in the code is only valid for v=4
     abar = 6;
-    mu   = 10;
+    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 0.5;
@@ -845,7 +941,7 @@ void load_benchmark_CsClN16() {
     v    = 4; // Please don't change v=4 because wprime
               // in the code is only valid for v=4
     abar = 6;
-    mu   = 10;
+    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 0.5;
@@ -885,7 +981,7 @@ void load_benchmark_CsClN128() {
     v    = 4; // Please don't change v=4 because wprime
               // in the code is only valid for v=4
     abar = 6;
-    mu   = 10;
+    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 0.5;
@@ -925,7 +1021,7 @@ void load_benchmark_changaN8() {
     v    = 4; // Please don't change v=4 because wprime
               // in the code is only valid for v=4
     abar = 6;
-    mu   = 10;
+    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 0.5 ;
@@ -953,7 +1049,7 @@ void load_benchmark_changaN64() {
     v    = 4; // Please don't change v=4 because wprime
               // in the code is only valid for v=4
     abar = 6;
-    mu   = 10;
+    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 0.25 ;
@@ -1036,7 +1132,7 @@ void load_benchmark_changaN512() {
     v    = 4; // Please don't change v=4 because wprime
               // in the code is only valid for v=4
     abar = 6;
-    mu   = 10;
+    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 0.125 ;
