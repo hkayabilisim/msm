@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-ansi -Wall -O3 -std=c99
+CFLAGS=-Wall -O3 -std=c99
 HEADERS=msmLibrary.h ewaldHernquist.h ewaldClassical.h
 OBJS=msmLibrary.o msmPeriodic.o ewaldHernquist.o ewaldClassical.o msmExpected.o msmSimple.o
 EXE=msmPeriodic msmExpected ewaldHernquist ewaldClassical msmSimple

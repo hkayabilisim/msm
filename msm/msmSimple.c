@@ -58,11 +58,11 @@ double ushort_real;     // Eq.11 first component
 double ushort_self;     // Eq.11 second component
 double ushort_csr ;     // Eq.11 third component     
 double ulong_real ;     // Eq.12 first component when l=1
-double ulong_real_expected; // Eq.14 first component when l=1 
-double ulong_four ;               // Eq.12 first component when l=2
-double ulong_four_expected;       // Eq.14 first component when l=2 
-double ulong_four_expected_cossum;// cos sum of Eq.14 first component when l=2 
-double ulong_four_expected_sinsum;// sin sum of Eq.14 first component when l=2 
+double ulong_real_expected; // Eq.12 first component when l=1
+double ulong_four ;               // Eq.14 first component when l=2
+double ulong_four_expected;       // Eq.12 first component when l=2
+double ulong_four_expected_cossum;// cos sum of Eq.12 first component when l=2
+double ulong_four_expected_sinsum;// sin sum of Eq.12 first component when l=2
 double ulong_self ;               // Eq.12 second component
 double utotal;                    // Eq.11 + Eq.14
 double utotal_expected;           // Eq.11 + Eq.12
@@ -577,31 +577,32 @@ void calculate_ulong_four() {
 void display_results(){
     printf("%-28s : %-20s\n","Testing...",dataname);
     printf("%-28s : %-d\n","N" ,N);
-    printf("%-28s  %-d\n","mu",mu);
-    printf("%-28s  %-d\n","v" ,v);
-    printf("%-28s  %-d\n","kmax" ,kmax);
-    printf("%-28s  %-d\n","pmax" ,pmax);
-    printf("%-28s  %-5.2f %-5.2f %-5.2f\n","hx hy hz" ,hx,hy,hz);
-    printf("%-28s  %-5.2f %-5.2f %-5.2f\n","Ax Ay Az" ,Ax,Ay,Az);
-    printf("%-28s  %-5d %-5d %-5d\n","Mx My Mz" ,Mx,My,Mz);
-    printf("%-28s  %-25.16e\n","beta" ,beta);
-    printf("%-28s  %-25.16e\n","detA" ,detA);
-    printf("%-28s  %-25.16e\n","abar" ,abar);
-    printf("%-28s  %-25.16e\n","a" ,a);
-    printf("%-28s  %-25.16e\n","aL" ,aL);
-    printf("%-28s  %25.16e\n","ushort_real" ,ushort_real);
-    printf("%-28s  %25.16e\n","ushort_self" ,ushort_self);
-    printf("%-28s  %25.16e\n","ushort_csr"  ,ushort_csr);
-    printf("%-28s  %25.16e\n","ulong_self"  ,ulong_self);
-    printf("%-28s  %25.16e\n","ulong_real"  ,ulong_real);
-    printf("%-28s  %25.16e\n","ulong_real_expected"  ,ulong_real_expected);
-    printf("%-28s  %25.16e\n","ulong_real_relerr"  ,fabs(ulong_real_expected-ulong_real)/fabs(ulong_real_expected));
-    printf("%-28s  %25.16e\n","ulong_four"  ,ulong_four);
-    printf("%-28s  %25.16e\n","ulong_four_expected_cossum"  ,ulong_four_expected_cossum);
-    printf("%-28s  %25.16e\n","ulong_four_expected_sinsum"  ,ulong_four_expected_sinsum);
-    printf("%-28s  %25.16e\n","utotal",utotal);
-    printf("%-28s  %25.16e\n","utotal_expected",utotal_expected);
-    printf("%-28s  %25.16e\n","utotal_relerr",fabs(utotal_expected-utotal)/fabs(utotal_expected));
+    printf("%-28s : %-d\n","mu",mu);
+    printf("%-28s : %-d\n","v" ,v);
+    printf("%-28s : %-d\n","kmax" ,kmax);
+    printf("%-28s : %-d\n","pmax" ,pmax);
+    printf("%-28s : %-5.2f %-5.2f %-5.2f\n","hx hy hz" ,hx,hy,hz);
+    printf("%-28s : %-5.2f %-5.2f %-5.2f\n","Ax Ay Az" ,Ax,Ay,Az);
+    printf("%-28s : %-5d %-5d %-5d\n","Mx My Mz" ,Mx,My,Mz);
+    printf("%-28s : %25.16e\n","beta" ,beta);
+    printf("%-28s : %25.16e\n","detA" ,detA);
+    printf("%-28s : %25.16e\n","abar" ,abar);
+    printf("%-28s : %25.16e\n","a" ,a);
+    printf("%-28s : %25.16e\n","aL" ,aL);
+    printf("%-28s : %25.16e\n","ushort_real" ,ushort_real);
+    printf("%-28s : %25.16e\n","ushort_self" ,ushort_self);
+    printf("%-28s : %25.16e\n","ushort_csr"  ,ushort_csr);
+    printf("%-28s : %25.16e\n","ulong_self"  ,ulong_self);
+    printf("%-28s : %25.16e\n","ulong_real"  ,ulong_real);
+    printf("%-28s : %25.16e\n","ulong_real_expected"  ,ulong_real_expected);
+    printf("%-28s : %25.16e\n","ulong_real_relerr"  ,fabs(ulong_real_expected-ulong_real)/fabs(ulong_real_expected));
+    printf("%-28s : %25.16e\n","ulong_four"  ,ulong_four);
+    printf("%-28s : %25.16e\n","ulong_four_expected_cossum"  ,ulong_four_expected_cossum);
+    printf("%-28s : %25.16e\n","ulong_four_expected_sinsum"  ,ulong_four_expected_sinsum);
+    printf("%-28s : %25.16e\n","ulong_four_relerr"  ,fabs(ulong_four-ulong_four_expected_cossum)/fabs(ulong_four_expected_cossum));
+    printf("%-28s : %25.16e\n","utotal",utotal);
+    printf("%-28s : %25.16e\n","utotal_expected",utotal_expected);
+    printf("%-28s : %25.16e\n","utotal_relerr",fabs(utotal_expected-utotal)/fabs(utotal_expected));
 }
 
 void load_benchmark(int id) {
