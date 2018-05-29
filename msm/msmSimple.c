@@ -80,7 +80,8 @@ double gama(double rho);         // Eq.31 and the one before
 double gLR(double r);            // Eq.1 and 2
 double g0(double r);             // Eq.15 first part
 double g1(double r);             // Eq.15 last part
-double choosebeta(double aL);    // changed from Appendix B.1 
+double choosebeta(double aL);    // changed from Appendix B.1
+int  choosekmax(double beta);  // Appendix B.2
 
 void calculate_ushort_real();
 void calculate_ushort_self();
@@ -131,6 +132,7 @@ int main(int argc, char *argv[]) {
     a = abar * h ;
     aL = 2 * a ;
     beta = choosebeta(aL);
+    kmax = choosekmax(beta);
     run_msm();
     
     return 0;
@@ -159,6 +161,30 @@ double choosebeta(double aL){
         iter++;
     }
     return a;
+}
+
+int choosekmax(double beta){
+    double e = 1e-15;
+    
+    double a = 0;
+    double b = 20;
+    double fa = (2*beta/sqrt(MYPI)) * erfc(MYPI * a / beta);
+    
+    int iter = 1;
+    int maxiter = 200;
+    while (fabs(fa-e)/fabs(e) > 1e-14 && iter < maxiter) {
+        //printf("%3d %25.16e %25.16e %25.16e %25.16e\n",iter,a,b,fa,fb);
+        double middle = (a+b)/2;
+        double fmiddle = (2*beta/sqrt(MYPI)) * erfc(MYPI * middle / beta);
+        if (fmiddle > e) {
+            a = middle;
+            fa = fmiddle;
+        } else {
+            b = middle;
+        }
+        iter++;
+    }
+    return round(a);
 }
 // Appendix A: Eq. 31 and the one before.
 /* double gama(double rho) {
