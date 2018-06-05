@@ -13,31 +13,6 @@
 #define SMAX  100
 #define MYPI  3.141592653589793238462643
 
-// Pre-preprocessed for v=4 and mu=10 
-// run report20171122/apppendixC(4,10)
-/* double wprime[13] = {
-     3.4641016151377539e+00, // 0
-    -1.7320508075688767e+00,
-     6.7949192431122685e-01,
-    -2.3978297178318450e-01,
-     7.9713982076653617e-02,
-    -2.5502951436845282e-02,
-     7.9437840692459776e-03,
-    -2.4260315207973015e-03,
-     7.2976833805943851e-04,
-    -2.1633348486544432e-04,
-     6.1410409127506203e-05,  // 10
-    -1.4537930745802521e-05,
-     1.9569521248038610e-06}; // 10 + v/2 (v=4) */
-
-double wprime[5] = {
-		   3.4641016151377539e+00,
-		  -1.7235390029754101e+00,
-		   6.4273441009183618e-01,
-		  -1.7702963774851166e-01,
-		   2.5783423063208574e-02
-};
-
 int N ;                    // # particles
 int Mx, My, Mz ;           // # grid points
 int Mxmin,Mxmax,Mymin,Mymax,Mzmin,Mzmax;
@@ -74,6 +49,7 @@ double em[MMAX][MMAX][MMAX];         // Grid potentials for l=1
 double em_fourier[MMAX][MMAX][MMAX]; // Grid potentials for l=2
 double Kl[SMAX][SMAX][SMAX];         // Stencil for l=1
 double KL[SMAX][SMAX][SMAX];         // Stencil for l=2
+double wprime[100];                  // Quasi-interpolation parameter
 
 double Bspline(int k,double u) ; // Recursive definition in 2.2.1
 double gama(double rho);         // Eq.31 and the one before
@@ -81,8 +57,12 @@ double gLR(double r);            // Eq.1 and 2
 double g0(double r);             // Eq.15 first part
 double g1(double r);             // Eq.15 last part
 double choosebeta(double aL);    // changed from Appendix B.1
-int  choosekmax(double beta);  // Appendix B.2
+double norm(double x[],int n);
+double diffnorm(double x[],double y[],int n);
+void gausssolver(int n,double *A,double *y) ;
 
+int  choosekmax(double beta);  // Appendix B.2
+void calculatewprime(int mu);
 void calculate_ushort_real();
 void calculate_ushort_self();
 void calculate_ushort_csr();
@@ -96,7 +76,9 @@ void calculate_ulong_four();
 void load_benchmark_NaNaN8();
 void load_benchmark_NaNaN64();
 void load_benchmark_NaNaN512();
+void load_benchmark_NaNaShiftedN8();
 void load_benchmark_NaClN8();
+void load_benchmark_NaClShiftedN8();
 void load_benchmark_NaClN64();
 void load_benchmark_NaClN512();
 void load_benchmark_CsClN2();
@@ -105,12 +87,14 @@ void load_benchmark_CsClN128();
 void load_benchmark_changaN8();
 void load_benchmark_changaN64();
 void load_benchmark_changaN512();
+void load_benchmark_CsClPositiveN2();
+
 void load_benchmark(int id);
 void run_msm();
 
 int main(int argc, char *argv[]) {
-    if (argc < 3) {
-        fprintf(stderr,"Usage: %s testid abar\n",argv[0]);
+    if (argc < 5) {
+        fprintf(stderr,"Usage: %s testid abar mu nu\n",argv[0]);
         fprintf(stderr,"  testid = 1 --> NaNaN8\n");
         fprintf(stderr,"  testid = 2 --> NaNaN64\n");
         fprintf(stderr,"  testid = 3 --> NaNaN512\n");
@@ -123,12 +107,22 @@ int main(int argc, char *argv[]) {
         fprintf(stderr,"  testid =10 --> changaN8\n");
         fprintf(stderr,"  testid =11 --> changaN64\n");
         fprintf(stderr,"  testid =12 --> changaN512\n");
+        fprintf(stderr,"  testid =13 --> CsClPositiveN2\n");
+        fprintf(stderr,"  testid =14 --> NaNaShiftedN8\n");
+        fprintf(stderr,"  testid =15 --> NaClShiftedN8\n");
+
         return 1;
     }
     int id = atoi(argv[1]);
-    
-    load_benchmark(id);
     abar = atof(argv[2]);
+    mu = atoi(argv[3]);
+    v = atoi(argv[4]);
+    if (v != 4 && v != 6) {
+        fprintf(stderr,"nu should 4 or 6\n");
+        return 1;
+    }
+    load_benchmark(id);
+    calculatewprime(mu);
     a = abar * h ;
     aL = 2 * a ;
     beta = choosebeta(aL);
@@ -185,6 +179,236 @@ int choosekmax(double beta){
         iter++;
     }
     return round(a);
+}
+
+void calculatewprime(int mu)
+{
+    int p = v , iteration;
+    if (p != 4 && p != 6)
+    {
+        fprintf(stderr,"p can be 4 or 6 only\n");
+    }
+    //     x     x        x     x          x
+    double P[100],gold[100],g[100],gprime[100],ksiprime[100],psiprime[100];
+    double Aprime[100];
+    // AppendixC --> Cpoly outputs only for p=4 and p=6
+    double psiprime4[2] = {6.4814814814814811e-02,9.2592592592592587e-03};
+    double psiprime6[4] = {-3.0804398148148150e-02,
+        -8.9800347222222226e-03,
+        -6.0590277777777780e-04,
+        -1.1863425925925925e-05};
+    double firstpart4[3] ={ -3.3333333333333331e-01  ,  1.6666666666666665e+00  , -3.3333333333333331e-01};
+     double firstpart6[5] = { 1.7083333333333334e-01  , -1.1833333333333333e+00  ,  3.0249999999999999e+00 ,
+         -1.1833333333333333e+00  ,  1.7083333333333334e-01};
+     double deltastencil[100], stencil[100] ;
+    //printf("mu = %d\n",mu);
+    for (int i = 0 ; i < 100 ; i++) {
+    	P[i] = 0.0;
+    	gold[i] = 0.0;
+    	g[i] = 0.0;
+    	gprime[i] = 0.0;
+    	ksiprime[i] = 0.0;
+    	psiprime[i] = 0.0;
+    	deltastencil[i] = 0.0;
+    	stencil[i] = 0.0;
+    }
+
+
+
+    for (int i = 0 ; i < p/2 ; i++) {
+        P[i] = Bspline(v, i + p/2);
+        gold[i] = 0.0;
+        g[i] = 0.0;
+        //printf("P[%d] %f\n",i,P[i]);
+    }
+    gold[0] = 1;
+    iteration = 0;
+    while (1) {
+        double value = 0.0;
+        for (int k = 1; k < p/2 ; k++)
+            value += gold[k]*gold[k];
+        value = P[0] - value ;
+        if (value < 0) {
+            fprintf(stderr,"something wrong %d\n",iteration);
+            return ;
+        }
+        g[0] = sqrt(value);
+        for (int j = 1; j <= p/2 - 1 ;j++) {
+            double sumtemp = 0.0;
+            for (int i = j+1;i <= p/2 - 1 ;i++) {
+                sumtemp += gold[i-j] * gold[i];
+            }
+            g[j] = (P[j] - sumtemp) / g[0];
+        }
+        double relerr = diffnorm(g,gold,p/2) / norm(g,p/2);
+        if (relerr < 1e-16 || iteration > 1000)
+            break;
+        for (int k=0;k<p/2;k++)
+            gold[k] = g[k];
+        iteration++;
+    }
+    //for (int k=0;k<p/2;k++)
+        //printf("g[%d] %f\n",k,g[k]);
+    
+    // Calculating gprime G2=GG
+    for (int k=0;k <p-1;k++)
+        gprime[k] = 0.0;
+    for (int i = 0 ; i <= p -2 ;i++)
+    {
+        int start = 0;
+        if (i > p/2 - 1)
+            start = i - (p/2 - 1);
+        int stop = fmin(i,p/2-1);
+        for (int j = start ; j <= stop ; j++)
+            gprime[i] += g[j] * g[i-j];
+    }
+    //for (int k=0;k <p-1;k++)
+      //  printf("gprime[%d] %25.16e\n",k,gprime[k]);
+    for (int i=0;i<p-2;i++)
+    {
+        if (p == 4)
+            psiprime[i] = psiprime4[i];
+        else if (p == 6)
+            psiprime[i] = psiprime6[i];
+    }
+    
+    for (int i = 0 ; i < p-1 ; i++)
+        ksiprime[i] = 0.0;
+    for (int i = p-3 ; i >= 0 ;i--) {
+        double sumprime = 0.0;
+        for (int j = i+1 ; j <= p - 3 ; j++) {
+            sumprime += ksiprime[j] * gprime[j-i] ;
+        }
+        ksiprime[i] = (psiprime[i] - sumprime)/gprime[0] ;
+    }
+    //for (int i = 0 ; i < p-1 ; i++)
+      //  printf("ksiprime[%d] = %25.16e\n",i,ksiprime[i]);
+    for (int i=0;i<p-1;i++)
+        for (int j=0;j<p-1;j++)
+            Aprime[i*(p-1)+j] = 0.0;
+    for (int i = 0 ; i <= p - 2 ; i++) {
+        for (int j = 0 ; j <= p - 2 ; j++) {
+            if (i >= j)
+                Aprime[i*(p-1)+j] = gprime[i-j];
+        }
+    }
+    for (int j=1; j<= p-2; j++) {
+        for (int i = 0 ; i<= p-2-j ; i++) {
+            Aprime[i*(p-1)+j] += gprime[i+j];
+        }
+    }
+    /*
+    for (int i=0;i<p-1;i++) {
+        for (int j=0;j<p-1;j++)
+            printf("%25.16f ",Aprime[i*(p-1)+j]);
+        printf(" | %8.5f\n",ksiprime[i]);
+    }*/
+    
+    gausssolver(p-1, Aprime, ksiprime);
+    /*
+    printf("after\n");
+    for (int i=0;i<p-1;i++) {
+        for (int j=0;j<p-1;j++)
+            printf("%25.16f ",Aprime[i*(p-1)+j]);
+        printf(" | %8.5f\n",ksiprime[i]);
+    } */
+    
+    double c[100] ;
+    for (int i = 0 ; i < 100 ; i++)
+        c[i] = 0;
+    for (int i=0;i< p-1;i++)
+        c[i] = ksiprime[i];
+    for (int n = p - 1; n <= 99 ; n++) {
+        double tmpsum = 0.0;
+        for (int k = 1; k <= p - 2 ; k++) {
+            tmpsum += c[n-k] * gprime[k];
+        }
+        c[n] = - tmpsum / gprime[0];
+    }
+    /* for (int i = 0 ; i < 100 ; i++)
+        printf("c[3d] %18.15f\n",c[i]); */
+
+    for (int i = 0 ; i <= p - 1 ; i++) {
+        if (p == 4)
+            deltastencil[i] = firstpart4[i];
+        else if (p == 6)
+            deltastencil[i] = firstpart6[i];
+    }
+    //for (int i = mu + p/2  ; i <= 2*mu+p ;i++ )
+    //    printf("stencil[%3d] : %18.15f\n",i-mu-p/2,stencil[i]);
+
+    for (int i = 1 ; i <= p -1 ;i++) {
+        double value = deltastencil[i-1];
+        int location = i - p/2 + mu + p/2;
+        stencil[location] += value;
+    }
+    /* for (int i = 0 ; i < 2*mu+p+1 ; i++)
+        printf("stencil[%3d] : %18.16f\n",i,stencil[i]);*/
+
+    double delta2stencil4[5] = {1  ,  -4   ,  6  ,  -4     ,1};
+    double delta2stencil6[7] = { 1 ,   -6  ,  15,   -20 ,   15 ,   -6,     1};
+    double delta2stencil[50];
+    for (int i = 0 ; i < p+1 ;i++) {
+        if ( p == 4)
+            delta2stencil[i] = delta2stencil4[i];
+        else if (p == 6)
+            delta2stencil[i] = delta2stencil6[i];
+    }
+
+
+    for (int m = -mu ; m <= mu ; m++) {
+        for (int i=1; i <= p+1 ; i++) {
+            double value = delta2stencil[i-1] * c[abs(m)] ;
+            int location = i-p/2-1 + m + mu + p/2 ;
+            stencil[location] += value;
+        }
+    }
+    for (int i = mu + p/2  ; i <= 2*mu+p ;i++ ){
+        //printf("stencil[%3d] : %18.15f\n",i-mu-p/2,stencil[i]);
+        wprime[i-mu-p/2] = stencil[i] ;
+    }
+
+    /*for (int i=0;i<20;i++)
+        printf("wprime[%3d] : %18.15f\n",i,wprime[i]);*/
+
+}
+
+double norm(double x[],int n){
+    double out = 0.0;
+    for (int i = 0 ; i < n ; i++)
+        out += x[i]*x[i];
+    out = sqrt(out);
+    return out;
+}
+double diffnorm(double x[],double y[],int n){
+    double out = 0.0;
+    for (int i = 0 ; i < n ; i++)
+        out += (x[i]-y[i])*(x[i]-y[i]);
+    out = sqrt(out);
+    return out;
+}
+
+void gausssolver(int n,double *A,double *y) {
+    // Forward substition
+    for (int j = 0 ; j < n - 1 ; j++) {
+        for (int i = j + 1 ; i < n ; i++) {
+            double multiplier = - A[i*n+j] / A[j*n+j]  ;
+            for (int k = 0 ; k < n ; k++) {
+                A[i*n+k] += multiplier * A[j*n+k] ;
+            }
+            y[i] += multiplier * y[j];
+        }
+    }
+    // Backward substition
+    
+    for (int j = n - 1 ; j >= 0 ; j--) {
+        y[j] = y[j] / A[j*n+j];
+        A[j*n+j] = 1.0 ;
+        for (int i = j - 1 ; i >= 0 ; i--) {
+            y[i] = y[i] - A[i*n+j]*y[j] ;
+            A[i*n+j] = 0.0;
+        }
+    }
 }
 // Appendix A: Eq. 31 and the one before.
 /* double gama(double rho) {
@@ -376,11 +600,18 @@ void do_anterpolation() {
                                 double phiy = Bspline(v, My * (sy - py) - my + v/2);
                                 double phiz = Bspline(v, Mz * (sz - pz) - mz + v/2);
                                 sum += phix * phiy * phiz * q[i];
+                                if (mx == 0 && my == 0 && mz == 0 &&
+                                    i == 0 &&
+                                    px == 0 && py == 0 && pz == 0)
+                                    printf("%6.2f %6.2f %6.2f %6.2f %6.2f %6.2f %2d %25.16e\n",
+                                           Mx * (sx - px) - mx + v/2,My * (sy - py) - my + v/2,Mz * (sz - pz) - mz + v/2,
+                                           phix,phiy,phiz,i,phix * phiy * phiz * q[i]);
                             }
                         }
                     }
                 }
                 qm[mx - Mxmin][my - Mymin][mz - Mzmin] = sum ;
+                printf("qm[%d][%d][%d] : %25.16e\n",mx-Mxmin,my-Mymin,mz-Mzmin,sum);
             }
         }
     }
@@ -626,6 +857,8 @@ void display_results(){
     printf("%-28s : %25.16e\n","ulong_four_expected_cossum"  ,ulong_four_expected_cossum);
     printf("%-28s : %25.16e\n","ulong_four_expected_sinsum"  ,ulong_four_expected_sinsum);
     printf("%-28s : %25.16e\n","ulong_four_relerr"  ,fabs(ulong_four-ulong_four_expected_cossum)/fabs(ulong_four_expected_cossum));
+    printf("%-28s : %25.16e\n","ulong_relerr",fabs(ulong_real+ulong_four-ulong_real_expected-ulong_four_expected_cossum) / fabs(ulong_real_expected+ulong_four_expected_cossum));
+
     printf("%-28s : %25.16e\n","utotal",utotal);
     printf("%-28s : %25.16e\n","utotal_expected",utotal_expected);
     printf("%-28s : %25.16e\n","utotal_relerr",fabs(utotal_expected-utotal)/fabs(utotal_expected));
@@ -669,6 +902,15 @@ void load_benchmark(int id) {
         case 12:
             load_benchmark_changaN512();
             break;
+        case 13:
+            load_benchmark_CsClPositiveN2();
+            break;
+        case 14:
+            load_benchmark_NaNaShiftedN8();
+            break;
+        case 15:
+            load_benchmark_NaClShiftedN8();
+            break;
         default:
             break;
     }
@@ -683,6 +925,8 @@ void run_msm() {
 	
     do_anterpolation();
 
+    //for (int i = 0 ; i < N ; i++)
+    //    printf("r[%2d] q:%f : %f %f %f\n",i,q[i],r[i][X],r[i][Y],r[i][Z]);
     // There is no approximated versions of these four quantities
     calculate_ushort_real();
     calculate_ushort_self();
@@ -726,17 +970,12 @@ void load_benchmark_NaNaN8() {
     N    = 8;
     Ax   = Ay = Az = 2;
     detA = Ax * Ay * Az ;
-    v    = 4; // Please don't change v=4 because wprime
-              // in the code is only valid for v=4
-    abar = 6;
-    mu   = 2;
-    kmax = 10; 
+    kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 1;
     Mx   = My = Mz = 2;
     a = abar * h ;
     aL = 2 * a ;
-    beta = 3.9952779973449493e-01; // precalculated w.r.t Appendix B.1
     
     int nx = 2; int ny = 2 ; int nz = 2 ;
     int bodyindex = 0 ;
@@ -759,17 +998,12 @@ void load_benchmark_NaNaN64() {
     N    = 64;
     Ax   = Ay = Az = 4;
     detA = Ax * Ay * Az ;
-    v    = 4; // Please don't change v=4 because wprime
-              // in the code is only valid for v=4
-    abar = 6;
-    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 1;
     Mx   = My = Mz = 4;
     a = abar * h ;
     aL = 2 * a ;
-    beta = 3.9952779973449493e-01;
     
     int nx = 4; int ny = 4 ; int nz = 4 ;
     int bodyindex = 0 ;
@@ -792,17 +1026,12 @@ void load_benchmark_NaNaN512() {
     N    = 512;
     Ax   = Ay = Az = 8;
     detA = Ax * Ay * Az ;
-    v    = 4; // Please don't change v=4 because wprime
-              // in the code is only valid for v=4
-    abar = 6;
-    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 1;
     Mx   = My = Mz = 8;
     a = abar * h ;
     aL = 2 * a ;
-    beta = 3.9952779973449493e-01;
     
     int nx = 8; int ny = 8 ; int nz = 8 ;
     int bodyindex = 0 ;
@@ -819,23 +1048,46 @@ void load_benchmark_NaNaN512() {
     }
 }
 
-// N=8 case of Figure 2 in report20180327
-void load_benchmark_NaClN8() {
-    sprintf(dataname, "NaClN8");
+// N=8 case of Figure 1 in report20180327
+void load_benchmark_NaNaShiftedN8() {
+    sprintf(dataname, "NaNaShiftedN8");
     N    = 8;
     Ax   = Ay = Az = 2;
     detA = Ax * Ay * Az ;
-    v    = 4; // Please don't change v=4 because wprime
-              // in the code is only valid for v=4
-    abar = 6;
-    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 1;
     Mx   = My = Mz = 2;
     a = abar * h ;
     aL = 2 * a ;
-    beta = 3.9952779973449493e-01;
+
+    int nx = 2; int ny = 2 ; int nz = 2 ;
+    int bodyindex = 0 ;
+    for (int i = 0 ; i < nx ; i++) {
+        for (int j = 0 ; j < ny ; j++) {
+            for (int k = 0 ; k < nz ; k++) {
+                r[bodyindex][X] = i + 0.5 ;
+                r[bodyindex][Y] = j + 0.5 ;
+                r[bodyindex][Z] = k + 0.5 ;
+                q[bodyindex]    = 1 ;
+                bodyindex++;
+            }
+        }
+    }
+}
+
+// N=8 case of Figure 2 in report20180327
+void load_benchmark_NaClN8() {
+    sprintf(dataname, "NaClN8");
+    N    = 8;
+    Ax   = Ay = Az = 2;
+    detA = Ax * Ay * Az ;
+    kmax = 10;
+    pmax = 10;
+    h    = hL = hx = hy = hz = 1;
+    Mx   = My = Mz = 2;
+    a = abar * h ;
+    aL = 2 * a ;
     
     int nx = 2; int ny = 2 ; int nz = 2 ;
     int bodyindex = 0 ;
@@ -852,23 +1104,47 @@ void load_benchmark_NaClN8() {
     }
 }
 
+
+// N=8 case of Figure 2 in report20180327
+void load_benchmark_NaClShiftedN8() {
+    sprintf(dataname, "NaClShiftedN8");
+    N    = 8;
+    Ax   = Ay = Az = 2 ;
+    detA = Ax * Ay * Az ;
+    kmax = 10;
+    pmax = 10;
+    h    = hL = hx = hy = hz = 1;
+    Mx   = My = Mz = 2;
+    a = abar * h ;
+    aL = 2 * a ;
+
+    int nx = 2; int ny = 2 ; int nz = 2 ;
+    int bodyindex = 0 ;
+    for (int i = 0 ; i < nx ; i++) {
+        for (int j = 0 ; j < ny ; j++) {
+            for (int k = 0 ; k < nz ; k++) {
+                r[bodyindex][X] = i + 0.5 ;
+                r[bodyindex][Y] = j + 0.5 ;
+                r[bodyindex][Z] = k + 0.5 ;
+                q[bodyindex]    = pow(-1,i+j+k) ;
+                bodyindex++;
+            }
+        }
+    }
+}
+
 // N=64 case of Figure 2 in report20180327
 void load_benchmark_NaClN64() {
     sprintf(dataname, "NaClN64");
     N    = 64;
     Ax   = Ay = Az = 4;
     detA = Ax * Ay * Az ;
-    v    = 4; // Please don't change v=4 because wprime
-              // in the code is only valid for v=4
-    abar = 6;
-    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 1;
     Mx   = My = Mz = 4;
     a = abar * h ;
     aL = 2 * a ;
-    beta = 3.9952779973449493e-01;
     
     int nx = 4; int ny = 4 ; int nz = 4 ;
     int bodyindex = 0 ;
@@ -891,17 +1167,12 @@ void load_benchmark_NaClN512() {
     N    = 512;
     Ax   = Ay = Az = 8;
     detA = Ax * Ay * Az ;
-    v    = 4; // Please don't change v=4 because wprime
-              // in the code is only valid for v=4
-    abar = 6;
-    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 1;
     Mx   = My = Mz = 8;
     a = abar * h ;
     aL = 2 * a ;
-    beta = 3.9952779973449493e-01;
     
     int nx = 8; int ny = 8 ; int nz = 8 ;
     int bodyindex = 0 ;
@@ -924,17 +1195,12 @@ void load_benchmark_CsClN2() {
     N    = 2;
     Ax   = Ay = Az = 1;
     detA = Ax * Ay * Az ;
-    v    = 4; // Please don't change v=4 because wprime
-              // in the code is only valid for v=4
-    abar = 6;
-    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 0.5;
     Mx   = My = Mz = 2;
     a = abar * h ;
     aL = 2 * a ;
-    beta = 5.1015658840559586e-01;
     
     int nx = 1; int ny = 1 ; int nz = 1 ;
     int bodyindex = 0 ;
@@ -965,17 +1231,12 @@ void load_benchmark_CsClN16() {
     N    = 16;
     Ax   = Ay = Az = 2;
     detA = Ax * Ay * Az ;
-    v    = 4; // Please don't change v=4 because wprime
-              // in the code is only valid for v=4
-    abar = 6;
-    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 0.5;
     Mx   = My = Mz = 4;
     a = abar * h ;
     aL = 2 * a ;
-    beta = 5.1015658840559586e-01;
     
     int nx = 2; int ny = 2 ; int nz = 2 ;
     int bodyindex = 0 ;
@@ -1005,17 +1266,12 @@ void load_benchmark_CsClN128() {
     N    = 128;
     Ax   = Ay = Az = 4;
     detA = Ax * Ay * Az ;
-    v    = 4; // Please don't change v=4 because wprime
-              // in the code is only valid for v=4
-    abar = 6;
-    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 0.5;
     Mx   = My = Mz = 8;
     a = abar * h ;
     aL = 2 * a ;
-    beta = 5.1015658840559586e-01;
     
     int nx = 4; int ny = 4 ; int nz = 4 ;
     int bodyindex = 0 ;
@@ -1045,17 +1301,12 @@ void load_benchmark_changaN8() {
     N    = 8;
     Ax   = Ay = Az = 1;
     detA = Ax * Ay * Az ;
-    v    = 4; // Please don't change v=4 because wprime
-              // in the code is only valid for v=4
-    abar = 6;
-    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 0.5 ;
     Mx   = My = Mz = 2;
     a = abar * h ;
     aL = 2 * a ;
-    beta = 8.2233267459052750e-01 ;
     r[ 0][X]= 7.892292e-01; r[ 0][Y]= 5.422255e-01; r[ 0][Z]= 1.832440e-01; q[  0]= 9.993093e-06;
     r[ 1][X]= 3.162612e-01; r[ 1][Y]= 9.933904e-01; r[ 1][Z]= 5.268250e-02; q[  1]= 9.993093e-06;
     r[ 2][X]= 6.496070e-02; r[ 2][Y]= 2.662055e-01; r[ 2][Z]= 4.990308e-01; q[  2]= 9.993093e-06;
@@ -1073,17 +1324,12 @@ void load_benchmark_changaN64() {
     N    = 64;
     Ax   = Ay = Az = 1;
     detA = Ax * Ay * Az ;
-    v    = 4; // Please don't change v=4 because wprime
-              // in the code is only valid for v=4
-    abar = 6;
-    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 0.25 ;
     Mx   = My = Mz = 4;
     a = abar * h ;
     aL = 2 * a ;
-    beta = 1.6899842461315719e+00 ;
     r[ 0][X]= 6.851051e-01; r[ 0][Y]= 3.284786e-01; r[ 0][Z]= 8.348171e-01; q[  0]= 9.993093e-06;
     r[ 1][X]= 1.227815e-01; r[ 1][Y]= 3.274495e-01; r[ 1][Z]= 9.072554e-01; q[  1]= 9.993093e-06;
     r[ 2][X]= 1.565225e-01; r[ 2][Y]= 9.730324e-01; r[ 2][Z]= 3.278511e-01; q[  2]= 9.993093e-06;
@@ -1156,17 +1402,12 @@ void load_benchmark_changaN512() {
     N    = 512;
     Ax   = Ay = Az = 1;
     detA = Ax * Ay * Az ;
-    v    = 4; // Please don't change v=4 because wprime
-              // in the code is only valid for v=4
-    abar = 6;
-    mu   = 2;
     kmax = 10;
     pmax = 10;
     h    = hL = hx = hy = hz = 0.125 ;
     Mx   = My = Mz = 8;
     a = abar * h ;
     aL = 2 * a ;
-    beta = 3.4683206143698224e+00;
     r[ 0][X]= 6.911842e-01; r[ 0][Y]= 7.251611e-01; r[ 0][Z]= 2.556736e-01; q[  0]= 9.993093e-06;
     r[ 1][X]= 4.153972e-01; r[ 1][Y]= 1.923024e-01; r[ 1][Z]= 6.005900e-02; q[  1]= 9.993093e-06;
     r[ 2][X]= 7.012648e-01; r[ 2][Y]= 7.103131e-01; r[ 2][Z]= 3.901396e-01; q[  2]= 9.993093e-06;
@@ -1680,3 +1921,40 @@ void load_benchmark_changaN512() {
     r[510][X]= 9.604940e-01; r[510][Y]= 5.306052e-01; r[510][Z]= 9.522110e-01; q[510]= 9.993093e-06;
     r[511][X]= 2.019551e-01; r[511][Y]= 3.950060e-02; r[511][Z]= 3.419927e-01; q[511]= 9.993093e-06;
 }
+
+
+// N=2 case of Figure 3 in report20180327
+void load_benchmark_CsClPositiveN2() {
+    sprintf(dataname, "CsClPositiveN2");
+    N    = 2;
+    Ax   = Ay = Az = 1;
+    detA = Ax * Ay * Az ;
+    kmax = 10;
+    pmax = 10;
+    h    = hL = hx = hy = hz = 0.5;
+    Mx   = My = Mz = 2;
+    a = abar * h ;
+    aL = 2 * a ;
+    
+    int nx = 1; int ny = 1 ; int nz = 1 ;
+    int bodyindex = 0 ;
+    for (int i = 0 ; i < nx ; i++) {
+        for (int j = 0 ; j < ny ; j++) {
+            for (int k = 0 ; k < nz ; k++) {
+                // Cs Atom
+                r[bodyindex][X] = i ;
+                r[bodyindex][Y] = j ;
+                r[bodyindex][Z] = k ;
+                q[bodyindex]    = 1 ;
+                bodyindex++;
+                // Cl Atom
+                r[bodyindex][X] = i + 0.5 ;
+                r[bodyindex][Y] = j + 0.5 ;
+                r[bodyindex][Z] = k + 0.5 ;
+                q[bodyindex]    = 1 ;
+                bodyindex++;
+            }
+        }
+    }
+}
+
