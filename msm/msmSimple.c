@@ -42,6 +42,12 @@ double ulong_self ;               // Eq.12 second component
 double utotal;                    // Eq.11 + Eq.14
 double utotal_expected;           // Eq.11 + Eq.12
 
+double fshort[NMAX][3];              // Short-range force
+double flong_real[NMAX][3];          // Long-range real    force with interpolation
+double flong_four[NMAX][3];          // Long-range Fourier force with interpolation
+double flong_real_expected[NMAX][3]; // Long-range real    force without interpolation
+double flong_four_expected[NMAX][3]; // Long-range Fourier force without interpolation
+
 double r[NMAX][3];                   // Particle positions (0 <= r <= Ax)
 double q[NMAX];                      // Particle charges
 double qm[MMAX][MMAX][MMAX];         // Grid charges
@@ -51,11 +57,16 @@ double Kl[SMAX][SMAX][SMAX];         // Stencil for l=1
 double KL[SMAX][SMAX][SMAX];         // Stencil for l=2
 double wprime[100];                  // Quasi-interpolation parameter
 
-double Bspline(int k,double u) ; // Recursive definition in 2.2.1
+double Bspline(int k,double u);  // Recursive definition in 2.2.1
+double Bsplineprime(int k,double u) ; // derivative by using B-spline article section III.B.1
 double gama(double rho);         // Eq.31 and the one before
+double gamaprime(double rho);   // its derivative
 double gLR(double r);            // Eq.1 and 2
+double gLRprime(double r);       // and its derivative
 double g0(double r);             // Eq.15 first part
+double g0prime(double r);        // and its derivative
 double g1(double r);             // Eq.15 last part
+double g1prime(double r);        // and its derivative
 double choosebeta(double aL);    // changed from Appendix B.1
 double norm(double x[],int n);
 double diffnorm(double x[],double y[],int n);
@@ -77,17 +88,23 @@ void load_benchmark_NaNaN8();
 void load_benchmark_NaNaN64();
 void load_benchmark_NaNaN512();
 void load_benchmark_NaNaShiftedN8();
+void load_benchmark_NaNaShiftedN64();
+void load_benchmark_NaNaShiftedN512();
 void load_benchmark_NaClN8();
-void load_benchmark_NaClShiftedN8();
 void load_benchmark_NaClN64();
 void load_benchmark_NaClN512();
+void load_benchmark_NaClShiftedN8();
+void load_benchmark_NaClShiftedN64();
+void load_benchmark_NaClShiftedN512();
 void load_benchmark_CsClN2();
 void load_benchmark_CsClN16();
 void load_benchmark_CsClN128();
+void load_benchmark_CsClPositiveN2();
+void load_benchmark_CsClPositiveN16();
+void load_benchmark_CsClPositiveN128();
 void load_benchmark_changaN8();
 void load_benchmark_changaN64();
 void load_benchmark_changaN512();
-void load_benchmark_CsClPositiveN2();
 
 void load_benchmark(int id);
 void run_msm();
@@ -98,18 +115,24 @@ int main(int argc, char *argv[]) {
         fprintf(stderr,"  testid = 1 --> NaNaN8\n");
         fprintf(stderr,"  testid = 2 --> NaNaN64\n");
         fprintf(stderr,"  testid = 3 --> NaNaN512\n");
-        fprintf(stderr,"  testid = 4 --> NaClN8\n");
-        fprintf(stderr,"  testid = 5 --> NaClN64\n");
-        fprintf(stderr,"  testid = 6 --> NaClN512\n");
-        fprintf(stderr,"  testid = 7 --> CsClN2\n");
-        fprintf(stderr,"  testid = 8 --> CsClN16\n");
-        fprintf(stderr,"  testid = 9 --> CsClN128\n");
-        fprintf(stderr,"  testid =10 --> changaN8\n");
-        fprintf(stderr,"  testid =11 --> changaN64\n");
-        fprintf(stderr,"  testid =12 --> changaN512\n");
-        fprintf(stderr,"  testid =13 --> CsClPositiveN2\n");
-        fprintf(stderr,"  testid =14 --> NaNaShiftedN8\n");
-        fprintf(stderr,"  testid =15 --> NaClShiftedN8\n");
+        fprintf(stderr,"  testid = 4 --> NaNaShiftedN8\n");
+        fprintf(stderr,"  testid = 5 --> NaNaShiftedN64\n");
+        fprintf(stderr,"  testid = 6 --> NaNaShiftedN512\n");
+        fprintf(stderr,"  testid = 7 --> NaClN8\n");
+        fprintf(stderr,"  testid = 8 --> NaClN64\n");
+        fprintf(stderr,"  testid = 9 --> NaClN512\n");
+        fprintf(stderr,"  testid = 10 --> NaClShiftedN8\n");
+        fprintf(stderr,"  testid = 11 --> NaClShiftedN64\n");
+        fprintf(stderr,"  testid = 12 --> NaClShiftedN512\n");
+        fprintf(stderr,"  testid = 13 --> CsClN2\n");
+        fprintf(stderr,"  testid = 14 --> CsClN16\n");
+        fprintf(stderr,"  testid = 15 --> CsClN128\n");
+        fprintf(stderr,"  testid = 16 --> CsClPositiveN2\n");
+        fprintf(stderr,"  testid = 17 --> CsClPositiveN16\n");
+        fprintf(stderr,"  testid = 18 --> CsClPositiveN128\n");
+        fprintf(stderr,"  testid =19 --> changaN8\n");
+        fprintf(stderr,"  testid =20 --> changaN64\n");
+        fprintf(stderr,"  testid =21 --> changaN512\n");
 
         return 1;
     }
@@ -432,12 +455,30 @@ double gama(double rho) {
         out = 1.0 / rho ;
     else {
         double  rho2m1 = rho * rho - 1.0;
-		  out = 1.0;
+		out = 1.0;
         for (int k = v-1 ; k >= 1 ; k--) {
 			  out = 1.0 + (0.5 - k)/k*rho2m1*out;
         }
     }
     return out;
+}
+
+// Appendix A, derivative of gamma with Horner's rule.
+double gamaprime(double rho) {
+    double out,outprime;
+    double rho2 = rho * rho ;
+    if (rho >= 1.0)
+        outprime = - 1.0 / rho2 ;
+    else {
+        double  rho2m1 = rho * rho - 1.0;
+		out = 1.0;
+		outprime = 0.0 ;
+        for (int k = v-1 ; k >= 1 ; k--) {
+			  out = 1.0 + (0.5 - k)/k*rho2m1*out;
+			  outprime = (0.5 - k)/k * (2 * rho * out + rho2m1*outprime) ;
+        }
+    }
+    return outprime;
 }
 
 // Eq.1 and 2 --> gLR(r) = erf(beta * r)/r
@@ -448,14 +489,32 @@ double gLR(double r) {
         return erf(beta * r) / r ;
 }
 
+// Derivative of erf(beta * r)/r
+double gLRprime(double r) {
+	if (r < DBL_EPSILON)
+		return 0.0;
+	else
+		return (2*beta * exp(-beta*beta*r*r)) / (sqrt(MYPI) * r)  - erf(beta*r)/(r*r);
+}
+
 // Eq. 5 first part
 double g0(double r) {
     return 1/r - (1/a) * gama(r/a)  ;
 }
 
+// Derivative of g0. Mind the chain rule!
+double g0prime(double r) {
+	return -1.0 / (r*r) - (1.0/(a*a) * gamaprime(r/a));
+}
+
 // Eq. 15 last part when L=1
 double g1(double r) {
     return (1/a) * gama(r/a) - gLR(r) ;
+}
+
+// Derivative of g1
+double g1prime(double r) {
+	return (1/(a*a)) * gamaprime(r/a) - gLRprime(r) ;
 }
 
 // Eq. 11 first component
@@ -586,32 +645,25 @@ void do_anterpolation() {
     for (int mx = Mxmin ; mx <= Mxmax ; mx++) {
         for (int my = Mymin ; my <= Mymax ; my++) {
             for (int mz = Mzmin ; mz <= Mzmax ; mz++) {
-                double sum = 0.0 ;
-                // p-sum in Eq.22
-                for (int px = -pmax ; px <= pmax ; px++) {
-                    for (int py = -pmax ; py <= pmax ; py++) {
-                        for (int pz = -pmax ; pz <= pmax ; pz++) {
-                            for (int i = 0 ; i < N ; i++) {
-                            	// s = inv(A) * r
-                                double sx = r[i][X] / Ax ;
-                                double sy = r[i][Y] / Ay ;
-                                double sz = r[i][Z] / Az ;
-                                double phix = Bspline(v, Mx * (sx - px) - mx + v/2);
-                                double phiy = Bspline(v, My * (sy - py) - my + v/2);
-                                double phiz = Bspline(v, Mz * (sz - pz) - mz + v/2);
-                                sum += phix * phiy * phiz * q[i];
-                                if (mx == 0 && my == 0 && mz == 0 &&
-                                    i == 0 &&
-                                    px == 0 && py == 0 && pz == 0)
-                                    printf("%6.2f %6.2f %6.2f %6.2f %6.2f %6.2f %2d %25.16e\n",
-                                           Mx * (sx - px) - mx + v/2,My * (sy - py) - my + v/2,Mz * (sz - pz) - mz + v/2,
-                                           phix,phiy,phiz,i,phix * phiy * phiz * q[i]);
-                            }
+            	double sum = 0.0 ;
+            	// p-sum in Eq.22
+            	for (int px = -pmax ; px <= pmax ; px++) {
+            		for (int py = -pmax ; py <= pmax ; py++) {
+            			for (int pz = -pmax ; pz <= pmax ; pz++) {
+            				for (int i = 0 ; i < N ; i++) {
+            					// s = inv(A) * r
+            					double sx = r[i][X] / Ax ;
+            					double sy = r[i][Y] / Ay ;
+            					double sz = r[i][Z] / Az ;
+            					double phix = Bspline(v, Mx * (sx - px) - mx + v/2);
+            					double phiy = Bspline(v, My * (sy - py) - my + v/2);
+            					double phiz = Bspline(v, Mz * (sz - pz) - mz + v/2);
+            					sum += phix * phiy * phiz * q[i];
+            				}
                         }
-                    }
-                }
+            		}
+            	}
                 qm[mx - Mxmin][my - Mymin][mz - Mzmin] = sum ;
-                printf("qm[%d][%d][%d] : %25.16e\n",mx-Mxmin,my-Mymin,mz-Mzmin,sum);
             }
         }
     }
@@ -866,53 +918,27 @@ void display_results(){
 
 void load_benchmark(int id) {
     switch (id) {
-        case 1:
-            load_benchmark_NaNaN8();
-            break;
-        case 2:
-            load_benchmark_NaNaN64();
-            break;
-        case 3:
-            load_benchmark_NaNaN512();
-            break;
-        case 4:
-            load_benchmark_NaClN8();
-            break;
-        case 5:
-            load_benchmark_NaClN64();
-            break;
-        case 6:
-            load_benchmark_NaClN512();
-            break;
-        case 7:
-            load_benchmark_CsClN2();
-            break;
-        case 8:
-            load_benchmark_CsClN16();
-            break;
-        case 9:
-            load_benchmark_CsClN128();
-            break;
-        case 10:
-            load_benchmark_changaN8();
-            break;
-        case 11:
-            load_benchmark_changaN64();
-            break;
-        case 12:
-            load_benchmark_changaN512();
-            break;
-        case 13:
-            load_benchmark_CsClPositiveN2();
-            break;
-        case 14:
-            load_benchmark_NaNaShiftedN8();
-            break;
-        case 15:
-            load_benchmark_NaClShiftedN8();
-            break;
-        default:
-            break;
+        case 1 : load_benchmark_NaNaN8();            break;
+        case 2 : load_benchmark_NaNaN64();           break;
+        case 3 : load_benchmark_NaNaN512();          break;
+        case 4 : load_benchmark_NaNaShiftedN8();     break;
+        case 5 : load_benchmark_NaNaShiftedN64();    break;
+        case 6 : load_benchmark_NaNaShiftedN512();   break;
+        case 7 : load_benchmark_NaClN8();            break;
+        case 8 : load_benchmark_NaClN64();           break;
+        case 9 : load_benchmark_NaClN512();          break;
+        case 10: load_benchmark_NaClShiftedN8();     break;
+        case 11: load_benchmark_NaClShiftedN64();    break;
+        case 12: load_benchmark_NaClShiftedN512();   break;
+        case 13: load_benchmark_CsClN2();            break;
+        case 14: load_benchmark_CsClN16();           break;
+        case 15: load_benchmark_CsClN128();          break;
+        case 16: load_benchmark_CsClPositiveN2();    break;
+        case 17: load_benchmark_CsClPositiveN16();   break;
+        case 18: load_benchmark_CsClPositiveN128();  break;
+        case 19: load_benchmark_changaN8();          break;
+        case 20: load_benchmark_changaN64();         break;
+        case 21: load_benchmark_changaN512();        break;
     }
 }
 // I numbered all 12 benchmarks with an integer
@@ -962,6 +988,11 @@ double Bspline(int k,double u) {
     } else {
         return u/(double)(k-1) * Bspline(k-1,u) + (k-u)/(double)(k-1) * Bspline(k-1,u-1.0);
     }
+}
+
+// From Section III.B.1 of Bob's B-spline article
+double Bsplineprime(int k,double u) {
+    return Bspline(k-1,u) - Bspline(k-1,u-1) ;
 }
 
 // N=8 case of Figure 1 in report20180327
@@ -1048,31 +1079,36 @@ void load_benchmark_NaNaN512() {
     }
 }
 
-// N=8 case of Figure 1 in report20180327
+// Shifted version of NaNa N=8
 void load_benchmark_NaNaShiftedN8() {
+    load_benchmark_NaNaN8();
     sprintf(dataname, "NaNaShiftedN8");
-    N    = 8;
-    Ax   = Ay = Az = 2;
-    detA = Ax * Ay * Az ;
-    kmax = 10;
-    pmax = 10;
-    h    = hL = hx = hy = hz = 1;
-    Mx   = My = Mz = 2;
-    a = abar * h ;
-    aL = 2 * a ;
+    for (int i = 0 ; i < N ; i++) {
+        r[i][X] += 0.5 ;
+        r[i][Y] += 0.5 ;
+        r[i][Z] += 0.5 ;
+    }
+}
 
-    int nx = 2; int ny = 2 ; int nz = 2 ;
-    int bodyindex = 0 ;
-    for (int i = 0 ; i < nx ; i++) {
-        for (int j = 0 ; j < ny ; j++) {
-            for (int k = 0 ; k < nz ; k++) {
-                r[bodyindex][X] = i + 0.5 ;
-                r[bodyindex][Y] = j + 0.5 ;
-                r[bodyindex][Z] = k + 0.5 ;
-                q[bodyindex]    = 1 ;
-                bodyindex++;
-            }
-        }
+// Shifted version of NaNa N=64
+void load_benchmark_NaNaShiftedN64() {
+    load_benchmark_NaNaN64();
+    sprintf(dataname, "NaNaShiftedN64");
+    for (int i = 0 ; i < N ; i++) {
+        r[i][X] += 0.5 ;
+        r[i][Y] += 0.5 ;
+        r[i][Z] += 0.5 ;
+    }
+}
+
+// Shifted version of NaNa N=512
+void load_benchmark_NaNaShiftedN512() {
+    load_benchmark_NaNaN512();
+    sprintf(dataname, "NaNaShiftedN512");
+    for (int i = 0 ; i < N ; i++) {
+        r[i][X] += 0.5 ;
+        r[i][Y] += 0.5 ;
+        r[i][Z] += 0.5 ;
     }
 }
 
@@ -1097,35 +1133,6 @@ void load_benchmark_NaClN8() {
                 r[bodyindex][X] = i ;
                 r[bodyindex][Y] = j ;
                 r[bodyindex][Z] = k ;
-                q[bodyindex]    = pow(-1,i+j+k) ;
-                bodyindex++;
-            }
-        }
-    }
-}
-
-
-// N=8 case of Figure 2 in report20180327
-void load_benchmark_NaClShiftedN8() {
-    sprintf(dataname, "NaClShiftedN8");
-    N    = 8;
-    Ax   = Ay = Az = 2 ;
-    detA = Ax * Ay * Az ;
-    kmax = 10;
-    pmax = 10;
-    h    = hL = hx = hy = hz = 1;
-    Mx   = My = Mz = 2;
-    a = abar * h ;
-    aL = 2 * a ;
-
-    int nx = 2; int ny = 2 ; int nz = 2 ;
-    int bodyindex = 0 ;
-    for (int i = 0 ; i < nx ; i++) {
-        for (int j = 0 ; j < ny ; j++) {
-            for (int k = 0 ; k < nz ; k++) {
-                r[bodyindex][X] = i + 0.5 ;
-                r[bodyindex][Y] = j + 0.5 ;
-                r[bodyindex][Z] = k + 0.5 ;
                 q[bodyindex]    = pow(-1,i+j+k) ;
                 bodyindex++;
             }
@@ -1189,6 +1196,38 @@ void load_benchmark_NaClN512() {
     }
 }
 
+// Shifted version of NaCl N=8
+void load_benchmark_NaClShiftedN8() {
+    load_benchmark_NaClN8();
+    sprintf(dataname, "NaClShiftedN8");
+    for (int i = 0 ; i < N ; i++) {
+        r[i][X] += 0.5 ;
+        r[i][Y] += 0.5 ;
+        r[i][Z] += 0.5 ;
+    }
+}
+
+// Shifted version of NaCl N=64
+void load_benchmark_NaClShiftedN64() {
+    load_benchmark_NaClN64();
+    sprintf(dataname, "NaClShiftedN64");
+    for (int i = 0 ; i < N ; i++) {
+        r[i][X] += 0.5 ;
+        r[i][Y] += 0.5 ;
+        r[i][Z] += 0.5 ;
+    }
+}
+
+// Shifted version of NaCl N=512
+void load_benchmark_NaClShiftedN512() {
+    load_benchmark_NaClN512();
+    sprintf(dataname, "NaClShiftedN512");
+    for (int i = 0 ; i < N ; i++) {
+        r[i][X] += 0.5 ;
+        r[i][Y] += 0.5 ;
+        r[i][Z] += 0.5 ;
+    }
+}
 // N=2 case of Figure 3 in report20180327
 void load_benchmark_CsClN2() {
     sprintf(dataname, "CsClN2");
@@ -1292,6 +1331,33 @@ void load_benchmark_CsClN128() {
                 bodyindex++;
             }
         }
+    }
+}
+
+// All positive version of CsCl
+void load_benchmark_CsClPositiveN2() {
+    load_benchmark_CsClN2();
+    sprintf(dataname, "CsClPositiveN2");
+    for (int i = 0 ; i < N ; i++) {
+        q[i] = 1;
+    }
+}
+
+// All positive version of CsCl
+void load_benchmark_CsClPositiveN16() {
+    load_benchmark_CsClN16();
+    sprintf(dataname, "CsClPositiveN16");
+    for (int i = 0 ; i < N ; i++) {
+        q[i] = 1;
+    }
+}
+
+// All positive version of CsCl
+void load_benchmark_CsClPositiveN128() {
+    load_benchmark_CsClN128();
+    sprintf(dataname, "CsClPositiveN128");
+    for (int i = 0 ; i < N ; i++) {
+        q[i] = 1;
     }
 }
 
@@ -1921,40 +1987,3 @@ void load_benchmark_changaN512() {
     r[510][X]= 9.604940e-01; r[510][Y]= 5.306052e-01; r[510][Z]= 9.522110e-01; q[510]= 9.993093e-06;
     r[511][X]= 2.019551e-01; r[511][Y]= 3.950060e-02; r[511][Z]= 3.419927e-01; q[511]= 9.993093e-06;
 }
-
-
-// N=2 case of Figure 3 in report20180327
-void load_benchmark_CsClPositiveN2() {
-    sprintf(dataname, "CsClPositiveN2");
-    N    = 2;
-    Ax   = Ay = Az = 1;
-    detA = Ax * Ay * Az ;
-    kmax = 10;
-    pmax = 10;
-    h    = hL = hx = hy = hz = 0.5;
-    Mx   = My = Mz = 2;
-    a = abar * h ;
-    aL = 2 * a ;
-    
-    int nx = 1; int ny = 1 ; int nz = 1 ;
-    int bodyindex = 0 ;
-    for (int i = 0 ; i < nx ; i++) {
-        for (int j = 0 ; j < ny ; j++) {
-            for (int k = 0 ; k < nz ; k++) {
-                // Cs Atom
-                r[bodyindex][X] = i ;
-                r[bodyindex][Y] = j ;
-                r[bodyindex][Z] = k ;
-                q[bodyindex]    = 1 ;
-                bodyindex++;
-                // Cl Atom
-                r[bodyindex][X] = i + 0.5 ;
-                r[bodyindex][Y] = j + 0.5 ;
-                r[bodyindex][Z] = k + 0.5 ;
-                q[bodyindex]    = 1 ;
-                bodyindex++;
-            }
-        }
-    }
-}
-
