@@ -47,6 +47,8 @@ double flong_real[NMAX][3];          // Long-range real    force with interpolat
 double flong_four[NMAX][3];          // Long-range Fourier force with interpolation
 double flong_real_expected[NMAX][3]; // Long-range real    force without interpolation
 double flong_four_expected[NMAX][3]; // Long-range Fourier force without interpolation
+double ftotal[NMAX][3];              // fshort + flong_real + flong_four
+double ftotal_expected[NMAX][3];     // fshort + flong_real_expected + flong_four_expected
 
 double r[NMAX][3];                   // Particle positions (0 <= r <= Ax)
 double q[NMAX];                      // Particle charges
@@ -83,6 +85,11 @@ void calculate_ulong_four_expected();
 void do_anterpolation();
 void calculate_ulong_real();
 void calculate_ulong_four();
+void calculate_fshort();
+void calculate_flong_real();
+void calculate_flong_four();
+void calculate_flong_real_expected();
+void calculate_flong_four_expected();
 
 void load_benchmark_NaNaN8();
 void load_benchmark_NaNaN64();
@@ -881,6 +888,82 @@ void calculate_ulong_four() {
         }
     }
 }
+void calculate_fshort() {
+    for (int i = 0 ; i < N ; i++) {
+        for (int j = 0 ; j < N ; j++) {
+            if (i == j) continue;
+            for (int px = -pmax ; px <= pmax ; px++) {
+                for (int py = -pmax ; py <= pmax ; py++) {
+                    for (int pz = -pmax ; pz <= pmax ; pz++) {
+                        double rx = r[i][X] - r[j][X] - Ax * px ;
+                        double ry = r[i][Y] - r[j][Y] - Ay * py ;
+                        double rz = r[i][Z] - r[j][Z] - Az * pz ;
+                        double rlen2 = rx * rx + ry * ry + rz * rz ;
+                        double rlen = sqrt(rlen2);
+                        
+                        fshort[i][X] += q[j] * g0prime(rlen) * rx / rlen ;
+                        fshort[i][Y] += q[j] * g0prime(rlen) * ry / rlen ;
+                        fshort[i][Z] += q[j] * g0prime(rlen) * rz / rlen ;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void calculate_flong_real() {
+    
+}
+void calculate_flong_four() {
+    
+}
+void calculate_flong_real_expected(){
+    for (int i = 0 ; i < N ; i++) {
+        for (int j = 0 ; j < N ; j++) {
+            if (i == j) continue;
+            for (int px = -pmax ; px <= pmax ; px++) {
+                for (int py = -pmax ; py <= pmax ; py++) {
+                    for (int pz = -pmax ; pz <= pmax ; pz++) {
+                        double rx = r[i][X] - r[j][X] - Ax * px ;
+                        double ry = r[i][Y] - r[j][Y] - Ay * py ;
+                        double rz = r[i][Z] - r[j][Z] - Az * pz ;
+                        double rlen2 = rx * rx + ry * ry + rz * rz ;
+                        double rlen = sqrt(rlen2);
+                        
+                        flong_real_expected[i][X] += q[j] * g1prime(rlen) * rx / rlen ;
+                        flong_real_expected[i][Y] += q[j] * g1prime(rlen) * ry / rlen ;
+                        flong_real_expected[i][Z] += q[j] * g1prime(rlen) * rz / rlen ;
+                    }
+                }
+            }
+        }
+    }
+}
+void calculate_flong_four_expected() {
+    for (int i = 0 ; i < N ; i++) {
+        for (int j = 0 ; j < N ; j++) {
+            double rijx = r[i][X] - r[j][X] ;
+            double rijy = r[i][Y] - r[j][Y] ;
+            double rijz = r[i][Z] - r[j][Z] ;
+            if (i == j) continue;
+            for (int kx = -kmax ; kx <= kmax ; kx++) {
+                for (int ky = -kmax ; ky <= kmax ; ky++) {
+                    for (int kz = -kmax ; kz <= kmax ; kz++) {
+                        if (kx == 0 && ky == 0 && kz == 0)
+                            continue;
+                        double k2 = (kx/Ax) * (kx/Ax) + (ky/Ay) * (ky/Ay) + (kz/Az) * (kz/Az) ;
+                        double dotprod = rijx * kx / Ax + rijy * ky / Ay + rijz * kz / Az ;
+                        double acc = q[j] * exp(-MYPI*MYPI*k2/(beta*beta)) *
+                        sin(2*MYPI*dotprod) * 2.0 / (k2 * detA) ;
+                        flong_four_expected[i][X] += - acc * kx / Ax ;
+                        flong_four_expected[i][Y] += - acc * ky / Ay ;
+                        flong_four_expected[i][Z] += - acc * kz / Az ;
+                    }
+                }
+            }
+        }
+    }
+}
 
 // Self-explanatory
 void display_results(){
@@ -914,6 +997,24 @@ void display_results(){
     printf("%-28s : %25.16e\n","utotal",utotal);
     printf("%-28s : %25.16e\n","utotal_expected",utotal_expected);
     printf("%-28s : %25.16e\n","utotal_relerr",fabs(utotal_expected-utotal)/fabs(utotal_expected));
+
+    {
+        FILE *fp = fopen("simple.acc_short","w");
+        fprintf(fp,"%d\n",N);
+        for (int i = 0 ; i < N ; i++) fprintf(fp,"%20.16e\n",fshort[i][X]);
+        for (int i = 0 ; i < N ; i++) fprintf(fp,"%20.16e\n",fshort[i][Y]);
+        for (int i = 0 ; i < N ; i++) fprintf(fp,"%20.16e\n",fshort[i][Z]);
+        fclose(fp);
+    }
+    
+    {
+        FILE *fp = fopen("simple.acc_total_expected","w");
+        fprintf(fp,"%d\n",N);
+        for (int i = 0 ; i < N ; i++) fprintf(fp,"%20.16e\n",ftotal_expected[i][X]);
+        for (int i = 0 ; i < N ; i++) fprintf(fp,"%20.16e\n",ftotal_expected[i][Y]);
+        for (int i = 0 ; i < N ; i++) fprintf(fp,"%20.16e\n",ftotal_expected[i][Z]);
+        fclose(fp);
+    }
 }
 
 void load_benchmark(int id) {
@@ -974,7 +1075,23 @@ void run_msm() {
     // Total potential energy without interpolation
     utotal_expected = ushort_real + ushort_self + ushort_csr + ulong_self +
     				  ulong_real_expected + ulong_four_expected  ;
-
+    
+    // Calculate forces
+    calculate_fshort();
+    calculate_flong_real();
+    calculate_flong_four();
+    calculate_flong_real_expected();
+    calculate_flong_four_expected();
+    
+    for (int i = 0 ; i < N * 3  ; i++) {
+        ftotal[i][X] = fshort[i][X] + flong_real[i][X] + flong_four[i][X];
+        ftotal[i][Y] = fshort[i][Y] + flong_real[i][Y] + flong_four[i][Y];
+        ftotal[i][Z] = fshort[i][Z] + flong_real[i][Z] + flong_four[i][Z];
+        ftotal_expected[i][X] = fshort[i][X] + flong_real_expected[i][X] + flong_four_expected[i][X];
+        ftotal_expected[i][Y] = fshort[i][Y] + flong_real_expected[i][Y] + flong_four_expected[i][Y];
+        ftotal_expected[i][Z] = fshort[i][Z] + flong_real_expected[i][Z] + flong_four_expected[i][Z];
+    }
+    
     display_results();
 }
 
