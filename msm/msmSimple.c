@@ -12,6 +12,14 @@
 #define MMAX  100
 #define SMAX  100
 #define MYPI  3.141592653589793238462643
+#define KMAX  15
+#define TOL_DIRECT 1E-8
+#define TOL_FOURIER 1E-8
+
+#define FACE_MAXLEN 20000
+int face_i[FACE_MAXLEN] ;
+int face_j[FACE_MAXLEN] ;
+int face_k[FACE_MAXLEN] ;
 
 int N;                    // # particles
 int v;                    // B-spline (v=4)
@@ -36,11 +44,12 @@ double ulong_real;          // Eq.12 first component when l=1
 double ulong_real_expected; // Eq.12 first component when l=1
 double ulong_four;                  // Eq.14 first component when l=2
 double ulong_four_expected;         // Eq.12 first component when l=2
-double ulong_four_expected_cossum;  // cos sum of Eq.12 first component when l=2
-double ulong_four_expected_sinsum;  // sin sum of Eq.12 first component when l=2
 double ulong_self;                  // Eq.12 second component
 double utotal;                      // Eq.11 + Eq.14
 double utotal_expected;             // Eq.11 + Eq.12
+
+int ulong_real_expected_convergedat ;
+int ulong_four_expected_convergedat ;
 
 double fshort[NMAX][3];              // Short-range force
 double flong_real[NMAX][3];          // Long-range real    force with interpolation
@@ -73,8 +82,11 @@ double choosebeta(double aL);    // changed from Appendix B.1
 double norm(double x[], int n);
 double diffnorm(double x[], double y[], int n);
 void gausssolver(int n, double *A, double *y);
+void tic(); // MATLAB-style timing functions
+double toc();
 
 int choosekmax(double beta);  // Appendix B.2
+int face_enumerate(int n);
 void do_anterpolation();
 void calculatewprime(int mu);
 void calculate_ushort_real();
@@ -114,6 +126,21 @@ void load_benchmark_changaN64();
 void load_benchmark_changaN512();
 void load_benchmark(int id);
 void run_msm();
+
+clock_t stack_data[MMAX] ;
+int stack_lastindex = -1 ;
+void tic() {
+  clock_t time = clock();
+  stack_lastindex++;
+  stack_data[stack_lastindex] = time;
+}
+double toc() {
+  clock_t now = clock();
+  clock_t previous = stack_data[stack_lastindex] ;
+  stack_lastindex--;
+  return (double)(now-previous)/CLOCKS_PER_SEC;
+}
+
 
 int main(int argc, char *argv[]) {
   if (argc < 5) {
@@ -205,6 +232,7 @@ int choosekmax(double beta) {
 }
 
 void calculatewprime(int mu) {
+  tic();
   int p = v, iteration;
   if (p != 4 && p != 6) {
     fprintf(stderr, "p can be 4 or 6 only\n");
@@ -385,6 +413,59 @@ void calculatewprime(int mu) {
   }
   /*for (int i=0;i<20;i++)
    printf("wprime[%3d] : %18.15f\n",i,wprime[i]);*/
+  printf("%-28s : %25.16f\n", "time_omegaprime", toc());
+}
+
+int face_enumerate(int n) {
+  int face_len = 0 ;
+  //tic();
+  int counter = 0;
+  if (n == 0) {
+    face_i[counter] = 0;
+    face_j[counter] = 0;
+    face_k[counter] = 0;
+    counter++;
+  } else {
+    for (int j = -n ; j <= n ; j++) {
+      for (int k = -n ; k <= n ; k++) {
+        face_i[counter] = -n ;
+        face_j[counter] =  j ;
+        face_k[counter] =  k  ;
+        counter++;
+        face_i[counter] = +n ;
+        face_j[counter] =  j ;
+        face_k[counter] =  k  ;
+        counter++;
+      }
+    }
+    for (int i = -n+1 ; i < n ; i++) {
+      for (int k = -n ; k <= n ; k++) {
+        face_i[counter] =  i ;
+        face_j[counter] = -n ;
+        face_k[counter] =  k ;
+        counter++;
+        face_i[counter] =  i ;
+        face_j[counter] =  n ;
+        face_k[counter] =  k ;
+        counter++;
+      }
+    }
+    for (int i = -n+1 ; i < n ; i++) {
+      for (int j = -n+1 ; j < n ; j++) {
+        face_i[counter] =  i ;
+        face_j[counter] =  j ;
+        face_k[counter] = -n ;
+        counter++;
+        face_i[counter] =  i ;
+        face_j[counter] =  j ;
+        face_k[counter] =  n ;
+        counter++;
+      }
+    }
+  }
+  face_len = counter;
+  //printf("%-28s : %d/%d %25.16f\n", "face_len", n,face_len,toc());
+  return face_len ;
 }
 
 double norm(double x[], int n) {
@@ -446,7 +527,6 @@ double gamaprime(double rho) {
   double rho2 = rho * rho;
   if (rho >= 1.0) {
     outprime = -1.0 / rho2;
-    out = 1.0 / rho;
   } else {
     double rho2m1 = rho * rho - 1.0;
     out = 1.0;
@@ -498,6 +578,7 @@ double g1prime(double r) {
 
 // Eq. 11 first component
 void calculate_ushort_real() {
+  tic();
   ushort_real = 0.0;
   for (int i = 0; i < N; i++) {
     for (int j = 0; j < N; j++) {
@@ -522,10 +603,12 @@ void calculate_ushort_real() {
       }
     }
   }
+  printf("%-28s : %25.16f\n", "time_ushort_real", toc());
 }
 
 // Eq. 11 second component
 void calculate_ushort_self() {
+  tic();
   ushort_self = 0.0;
   int pxmin = - a / Ax;
   int pxmax =   a / Ax;
@@ -549,6 +632,7 @@ void calculate_ushort_self() {
   for (int i = 0; i < N; i++) {
     ushort_self += 0.5 * q[i] * q[i] * psum ;
   }
+  printf("%-28s : %25.16f\n", "time_ushort_self", toc());
 }
 
 // Eq. 11 third component
@@ -562,65 +646,79 @@ void calculate_ushort_csr() {
 
 // Eq. 12 first component for l = 1
 void calculate_ulong_real_expected() {
+  tic();
   ulong_real_expected = 0.0;
-  for (int i = 0; i < N; i++) {
-    for (int j = 0; j < N; j++) {
-      // choose p s.t |ri-rj-Ap|<a_L
-      int pxmin = (r[i][X] - r[j][X] - aL) / Ax;
-      int pxmax = (r[i][X] - r[j][X] + aL) / Ax;
-      int pymin = (r[i][Y] - r[j][Y] - aL) / Ay;
-      int pymax = (r[i][Y] - r[j][Y] + aL) / Ay;
-      int pzmin = (r[i][Z] - r[j][Z] - aL) / Az;
-      int pzmax = (r[i][Z] - r[j][Z] + aL) / Az;
-      for (int px = pxmin; px <= pxmax; px++) {
-        for (int py = pymin; py <= pymax; py++) {
-          for (int pz = pzmin; pz <= pzmax; pz++) {
-            double rx = r[i][X] - r[j][X] - Ax * px;
-            double ry = r[i][Y] - r[j][Y] - Ay * py;
-            double rz = r[i][Z] - r[j][Z] - Az * pz;
-            double rlen2 = rx * rx + ry * ry + rz * rz;
-            double rlen = sqrt(rlen2);
-            ulong_real_expected += 0.5 * q[i] * q[j] * g1(rlen);
-          }
+  double ulong_real_expected_before = 0.0;
+  int p = 0 ;
+  do {
+    int face_len = face_enumerate(p);
+    for (int idx = 0 ; idx < face_len ; idx++) {
+      int px = face_i[idx];
+      int py = face_j[idx];
+      int pz = face_k[idx] ;
+      for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+          double rx = r[i][X] - r[j][X] - Ax * px;
+          double ry = r[i][Y] - r[j][Y] - Ay * py;
+          double rz = r[i][Z] - r[j][Z] - Az * pz;
+          double rlen2 = rx * rx + ry * ry + rz * rz;
+          double rlen = sqrt(rlen2);
+          ulong_real_expected += 0.5 * q[i] * q[j] * g1(rlen);
         }
       }
     }
-  }
+    printf("ulong_real_expected(p:%2d)    : %25.16e\n",p,ulong_real_expected);
+    if (p!= 0 && fabs(ulong_real_expected_before - ulong_real_expected)/fabs(ulong_real_expected) < TOL_DIRECT ) {
+      ulong_real_expected_convergedat = p ;
+      break;
+    } else
+      ulong_real_expected_before = ulong_real_expected ;
+    p++;
+  } while (p < KMAX);
+  printf("%-28s : %25.16f\n", "time_ulong_real_expected", toc());
 }
 
-// Eq. 12 first component for l = 2 
+// Eq. 12 first component for l = 2
 // coupled with Eq. 4 and 5.
 void calculate_ulong_four_expected() {
+  tic();
   ulong_four_expected = 0.0;
-  ulong_four_expected_cossum = 0.0;
-  ulong_four_expected_sinsum = 0.0;
-  for (int i = 0; i < N; i++) {
-    for (int j = 0; j < N; j++) {
-      for (int kx = -kmax; kx <= kmax; kx++) {
-        for (int ky = -kmax; ky <= kmax; ky++) {
-          for (int kz = -kmax; kz <= kmax; kz++) {
-            if (kx == 0 && ky == 0 && kz == 0) continue;
-            double kvecx = kx / Ax; // Eq. 5 (kvec = A^{-1}k)
-            double kvecy = ky / Ay;
-            double kvecz = kz / Az;
-            double k2 = kvecx * kvecx + kvecy * kvecy + kvecz * kvecz;
-            // Eq. 5
-            double chi = (1.0 / (MYPI * k2 * detA))
-                * exp(-MYPI * MYPI * k2 / (beta * beta));
-            double dotprod = kvecx * (r[i][X] - r[j][X])
-                           + kvecy * (r[i][Y] - r[j][Y])
-                           + kvecz * (r[i][Z] - r[j][Z]);
-            // cos and sin components in Eq. 4
-            ulong_four_expected_cossum += 0.5 * q[i] * q[j] * chi
-                * cos(2.0 * MYPI * dotprod);
-            ulong_four_expected_sinsum += 0.5 * q[i] * q[j] * chi
-                * sin(2.0 * MYPI * dotprod);
-          }
+  double ulong_four_expected_before = 0.0;
+  int k = 0 ;
+  do {
+    int face_len = face_enumerate(k) ;
+    for (int idx = 0 ; idx < face_len ; idx++) {
+      int kx = face_i[idx];
+      int ky = face_j[idx];
+      int kz = face_k[idx];
+      if (kx == 0 && ky == 0 && kz == 0) continue;
+      for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+          double kvecx = kx / Ax; // Eq. 5 (kvec = A^{-1}k)
+          double kvecy = ky / Ay;
+          double kvecz = kz / Az;
+          double k2 = kvecx * kvecx + kvecy * kvecy + kvecz * kvecz;
+          // Eq. 5
+          double chi = (1.0 / (MYPI * k2 * detA))
+          * exp(-MYPI * MYPI * k2 / (beta * beta));
+          double dotprod = kvecx * (r[i][X] - r[j][X])
+          + kvecy * (r[i][Y] - r[j][Y])
+          + kvecz * (r[i][Z] - r[j][Z]);
+          // cos and sin components in Eq. 4
+          ulong_four_expected += 0.5 * q[i] * q[j] * chi
+          * cos(2.0 * MYPI * dotprod);
         }
       }
     }
-  } // sin sum is practically zero so I take only cos sum.
-  ulong_four_expected = ulong_four_expected_cossum;
+    printf("ulong_four_expected(k:%2d)    : %25.16e\n",k,ulong_four_expected);
+    if (k > 0 && k % 2 == 0 && fabs(ulong_four_expected_before - ulong_four_expected)/fabs(ulong_four_expected) < TOL_FOURIER ) {
+      ulong_four_expected_convergedat = k ;
+      break;
+    } else
+      ulong_four_expected_before = ulong_four_expected ;
+    k++;
+  } while (k < KMAX) ;
+  printf("%-28s : %25.16f\n", "time_ulong_four_expected", toc());
 }
 
 // Eq. 12 second component
@@ -636,6 +734,7 @@ void calculate_ulong_self() {
 // The equation just after Eq. 14
 // The range for m obeys Eq. 23
 void do_anterpolation() {
+  tic();
   for (int mx = Mxmin; mx <= Mxmax; mx++) {
     for (int my = Mymin; my <= Mymax; my++) {
       for (int mz = Mzmin; mz <= Mzmax; mz++) {
@@ -667,11 +766,13 @@ void do_anterpolation() {
       }
     }
   }
+  printf("%-28s : %25.16f\n", "time_anterpolation", toc());
 }
 
 // Section 2.2.3
 // The range for m obeys Eq. 23
 void calculate_stencil_Kl() {
+  tic();
   for (int mx = Mxmin; mx <= Mxmax; mx++) {
     for (int my = Mymin; my <= Mymax; my++) {
       for (int mz = Mzmin; mz <= Mzmax; mz++) {
@@ -709,6 +810,7 @@ void calculate_stencil_Kl() {
       }
     }
   }
+  printf("%-28s : %25.16f\n", "time_stencilKl", toc());
 }
 
 // The grid potential e_m calculated for l=1
@@ -716,6 +818,7 @@ void calculate_stencil_Kl() {
 // e_m = \sum_n Kl_{m-n} q_n 
 // The range for m and n obeys Eq. 23
 void do_grid_to_grid_mapping() {
+  tic();
   for (int mx = Mxmin; mx <= Mxmax; mx++) {
     for (int my = Mymin; my <= Mymax; my++) {
       for (int mz = Mzmin; mz <= Mzmax; mz++) {
@@ -743,6 +846,8 @@ void do_grid_to_grid_mapping() {
       }
     }
   }
+  printf("%-28s : %25.16f\n", "time_grid_to_grid", toc());
+
 }
 
 // The grid potential e_m calculated for l=2 (Fourier)
@@ -750,6 +855,7 @@ void do_grid_to_grid_mapping() {
 // e_m = \sum_n KL_{m-n} q_n 
 // The range for m and n obeys Eq. 23
 void do_grid_to_grid_mapping_fourier() {
+  tic();
   for (int mx = Mxmin; mx <= Mxmax; mx++) {
     for (int my = Mymin; my <= Mymax; my++) {
       for (int mz = Mzmin; mz <= Mzmax; mz++) {
@@ -777,14 +883,12 @@ void do_grid_to_grid_mapping_fourier() {
       }
     }
   }
+  printf("%-28s : %25.16f\n", "time_grid_to_grid_four", toc());
 }
 
 // Long-range real-sum is just 0.5 * qm^T * em
 void calculate_ulong_real() {
-  // I need stencil
-  calculate_stencil_Kl();
-  // then grid potentials
-  do_grid_to_grid_mapping();
+  tic();
   ulong_real = 0.0;
   for (int mx = 0; mx < (Mxmax-Mxmin+1); mx++) {
     for (int my = 0; my < (Mymax-Mymin+1); my++) {
@@ -793,6 +897,7 @@ void calculate_ulong_real() {
       }
     }
   }
+  printf("%-28s : %25.16f\n", "time_ulong_real", toc());
 }
 
 // Centered B-spline with order v - 1
@@ -815,6 +920,7 @@ double calculate_c(double k, double M) {
 // Section 2.3, Eq. 29
 // The range for m obeys Eq. 23
 void calculate_stencil_KL() {
+  tic();
   for (int mx = Mxmin; mx <= Mxmax; mx++) {
     for (int my = Mymin; my <= Mymax; my++) {
       for (int mz = Mzmin; mz <= Mzmax; mz++) {
@@ -848,17 +954,13 @@ void calculate_stencil_KL() {
       }
     }
   }
+  printf("%-28s : %25.16f\n", "time_stencilKL", toc());
 }
 
 // Potential energy for Long-range recp-sum is
 // just 0.5 * em_fourier^T * qm where
 void calculate_ulong_four() {
-
-  // Need stencil l=2
-  calculate_stencil_KL();
-  // Need grid potentials when l=2
-  do_grid_to_grid_mapping_fourier();
-
+  tic();
   ulong_four = 0.0;
   for (int mx = 0; mx < Mx; mx++) {
     for (int my = 0; my < My; my++) {
@@ -867,8 +969,10 @@ void calculate_ulong_four() {
       }
     }
   }
+  printf("%-28s : %25.16f\n", "time_ulong_four", toc());
 }
 void calculate_fshort() {
+  tic();
   for (int i = 0; i < N; i++) {
     fshort[i][X] = 0.0;
     fshort[i][Y] = 0.0;
@@ -896,9 +1000,11 @@ void calculate_fshort() {
     fshort[i][Y] *= q[i];
     fshort[i][Z] *= q[i];
   }
+  printf("%-28s : %25.16f\n", "time_fshort", toc());
 }
 
 void calculate_flong_real() {
+  tic();
   double oneoverhx = 1.0 / hx;
   double oneoverhy = 1.0 / hy;
   double oneoverhz = 1.0 / hz;
@@ -935,8 +1041,10 @@ void calculate_flong_real() {
     flong_real[i][Y] *= q[i] ;
     flong_real[i][Z] *= q[i] ;
   }
+  printf("%-28s : %25.16f\n", "time_flong_real", toc());
 }
 void calculate_flong_four() {
+  tic();
   double oneoverhx = 1.0 / hx;
   double oneoverhy = 1.0 / hy;
   double oneoverhz = 1.0 / hz;
@@ -973,8 +1081,10 @@ void calculate_flong_four() {
     flong_four[i][Y] *= q[i] ;
     flong_four[i][Z] *= q[i] ;
   }
+  printf("%-28s : %25.16f\n", "time_flong_four", toc());
 }
 void calculate_flong_real_expected() {
+  tic();
   for (int i = 0; i < N; i++) {
     flong_real_expected[i][X] = 0.0;
     flong_real_expected[i][Y] = 0.0;
@@ -1000,9 +1110,11 @@ void calculate_flong_real_expected() {
     flong_real_expected[i][Y] *= q[i] ;
     flong_real_expected[i][Z] *= q[i] ;
   }
+  printf("%-28s : %25.16f\n", "time_flong_real_expected", toc());
 }
 
 void calculate_flong_four_expected() {
+  tic();
   for (int i = 0; i < N; i++) {
     flong_four_expected[i][X] = 0.0;
     flong_four_expected[i][Y] = 0.0;
@@ -1034,6 +1146,7 @@ void calculate_flong_four_expected() {
     flong_four_expected[i][Y] *= q[i] ;
     flong_four_expected[i][Z] *= q[i] ;
   }
+  printf("%-28s : %25.16f\n", "time_flong_four_expected", toc());
 }
 
 // Self-explanatory
@@ -1052,27 +1165,29 @@ void display_results() {
   printf("%-28s : %25.16e\n", "abar", abar);
   printf("%-28s : %25.16e\n", "a", a);
   printf("%-28s : %25.16e\n", "aL", aL);
+  printf("%-28s : %25.4e\n", "TOL_DIRECT", TOL_DIRECT);
+  printf("%-28s : %25.4e\n", "TOL_FOURIER", TOL_FOURIER);
   printf("%-28s : %25.16e\n", "ushort_real", ushort_real);
   printf("%-28s : %25.16e\n", "ushort_self", ushort_self);
   printf("%-28s : %25.16e\n", "ushort_csr", ushort_csr);
   printf("%-28s : %25.16e\n", "ulong_self", ulong_self);
   printf("%-28s : %25.16e\n", "ulong_real", ulong_real);
   printf("%-28s : %25.16e\n", "ulong_real_expected", ulong_real_expected);
+  printf("%-28s : %d\n", "ulong_real_expected_convergedat", ulong_real_expected_convergedat);
   printf("%-28s : %25.16e\n", "ulong_real_relerr",
-      fabs(ulong_real_expected - ulong_real) / fabs(ulong_real_expected));
+      fabs(ulong_real_expected - ulong_real) / fabs(ulong_real_expected + ulong_four_expected));
   printf("%-28s : %25.16e\n", "ulong_four", ulong_four);
-  printf("%-28s : %25.16e\n", "ulong_four_expected_cossum",
-      ulong_four_expected_cossum);
-  printf("%-28s : %25.16e\n", "ulong_four_expected_sinsum",
-      ulong_four_expected_sinsum);
+  printf("%-28s : %25.16e\n", "ulong_four_expected",ulong_four_expected);
+  printf("%-28s : %d\n", "ulong_four_expected_convergedat", ulong_four_expected_convergedat);
+
   printf("%-28s : %25.16e\n", "ulong_four_relerr",
-      fabs(ulong_four - ulong_four_expected_cossum)
-          / fabs(ulong_four_expected_cossum));
+      fabs(ulong_four - ulong_four_expected)
+          / fabs(ulong_four_expected + ulong_real_expected));
   printf("%-28s : %25.16e\n", "ulong_relerr",
       fabs(
           ulong_real + ulong_four - ulong_real_expected
-              - ulong_four_expected_cossum)
-          / fabs(ulong_real_expected + ulong_four_expected_cossum));
+              - ulong_four_expected)
+          / fabs(ulong_real_expected + ulong_four_expected));
 
   printf("%-28s : %25.16e\n", "utotal", utotal);
   printf("%-28s : %25.16e\n", "utotal_expected", utotal_expected);
@@ -1087,6 +1202,30 @@ void display_results() {
         ftotal_max = relerror;
     }
     printf("%-28s : %25.16e\n", "ftotal_err_max", ftotal_max);
+  }
+  
+  {
+    double top = 0.0;
+    double bottom = 0.0;
+    for (int i = 0 ; i < N ; i++) {
+      for (int j = 0 ; j < 3 ; j++) {
+        top += pow(flong_four_expected[i][j] - flong_four[i][j],2);
+        bottom += pow(flong_four_expected[i][j] + flong_real_expected[i][j],2);
+      }
+    }
+    printf("%-28s : %25.16e\n", "flong_four_relerr", sqrt(top/bottom));
+  }
+  
+  {
+    double top = 0.0;
+    double bottom = 0.0;
+    for (int i = 0 ; i < N ; i++) {
+      for (int j = 0 ; j < 3 ; j++) {
+        top += pow(flong_real_expected[i][j] - flong_real[i][j],2);
+        bottom += pow(flong_four_expected[i][j] + flong_real_expected[i][j],2);
+      }
+    }
+    printf("%-28s : %25.16e\n", "flong_real_relerr", sqrt(top/bottom));
   }
 
   {
@@ -1186,11 +1325,14 @@ void run_msm() {
   calculate_ushort_csr();
   calculate_ulong_self();
 
-  // ulong_real and ulong_four are calculated by using interpolation
+  calculate_stencil_Kl();
+  do_grid_to_grid_mapping();
   calculate_ulong_real();
+  
+  calculate_stencil_KL();
+  do_grid_to_grid_mapping_fourier();
   calculate_ulong_four();
 
-  // For comparioson there two are direct calculations
   calculate_ulong_real_expected();
   calculate_ulong_four_expected();
 
