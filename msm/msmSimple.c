@@ -8,15 +8,29 @@
 #define X 0
 #define Y 1
 #define Z 2
-#define NMAX  1000
+#define NMAX  40000
 #define MMAX  100
 #define SMAX  100
 #define MYPI  3.141592653589793238462643
 #define KMAX  15
 #define TOL_DIRECT 1E-8
 #define TOL_FOURIER 1E-8
+#define CMAX 10
 
-#define FACE_MAXLEN 20000
+typedef struct CellElement
+{
+  int    particleIndex;
+  struct CellElement *next;
+  struct CellElement *prev;
+} CellElement;
+
+typedef struct Cell
+{
+  struct CellElement *head;
+  struct CellElement *tail;
+} Cell;
+
+#define FACE_MAXLEN 40000
 int face_i[FACE_MAXLEN] ;
 int face_j[FACE_MAXLEN] ;
 int face_k[FACE_MAXLEN] ;
@@ -41,15 +55,20 @@ double ushort_real;         // Eq.11 first component
 double ushort_self;         // Eq.11 second component
 double ushort_csr;          // Eq.11 third component
 double ulong_real;          // Eq.12 first component when l=1
+double ulong_real_kernel;
 double ulong_real_expected; // Eq.12 first component when l=1
+double ulong_real_expected_kernel;
 double ulong_four;                  // Eq.14 first component when l=2
+double ulong_four_kernel;
 double ulong_four_expected;         // Eq.12 first component when l=2
+double ulong_four_expected_kernel;
 double ulong_self;                  // Eq.12 second component
 double utotal;                      // Eq.11 + Eq.14
 double utotal_expected;             // Eq.11 + Eq.12
 
 int ulong_real_expected_convergedat ;
 int ulong_four_expected_convergedat ;
+int debug = 0;
 
 double fshort[NMAX][3];              // Short-range force
 double flong_real[NMAX][3];          // Long-range real    force with interpolation
@@ -67,9 +86,37 @@ double em_fourier[MMAX][MMAX][MMAX]; // Grid potentials for l=2
 double Kl[SMAX][SMAX][SMAX];         // Stencil for l=1
 double KL[SMAX][SMAX][SMAX];         // Stencil for l=2
 double wprime[100];                  // Quasi-interpolation parameter
+Cell cells[CMAX][CMAX][CMAX] ;
+
+double time_omegaprime=0.0;
+double time_anterpolation=0.0;
+double time_ushort_real=0.0;
+double time_ushort_self=0.0;
+double time_stencilKl=0.0;
+double time_grid_to_grid=0.0;
+double time_ulong_real=0.0;
+double time_ulong_real_kernel=0.0;
+double time_stencilKL=0.0;
+double time_grid_to_grid_four=0.0;
+double time_ulong_four=0.0;
+double time_ulong_four_kernel=0.0;
+double time_ulong_real_expected=0.0;
+double time_ulong_real_expected_kernel=0.0;
+double time_ulong_four_expected=0.0;
+double time_ulong_four_expected_kernel=0.0;
+double time_fshort=0.0;
+double time_flong_real=0.0;
+double time_flong_four=0.0;
+double time_flong_real_expected=0.0;
+double time_flong_four_expected=0.0;
 
 double Bspline(int k, double u);     // Recursive definition in 2.2.1
 double Bsplineprime(int k, double u);// derivative by using B-spline article section III.B.1
+double varphi(int mx,int my,int mz,double sx,double sy,double sz);
+double varphidx(int mx,int my,int mz,double sx,double sy,double sz);
+double varphidy(int mx,int my,int mz,double sx,double sy,double sz);
+double varphidz(int mx,int my,int mz,double sx,double sy,double sz);
+
 double gama(double rho);         // Eq.31 and the one before
 double gamaprime(double rho);    // its derivative
 double gLR(double r);            // Eq.1 and 2
@@ -84,6 +131,8 @@ double diffnorm(double x[], double y[], int n);
 void gausssolver(int n, double *A, double *y);
 void tic(); // MATLAB-style timing functions
 double toc();
+void data_read(char *filename);
+void display_results();
 
 int choosekmax(double beta);  // Appendix B.2
 int face_enumerate(int n);
@@ -92,6 +141,7 @@ void calculatewprime(int mu);
 void calculate_ushort_real();
 void calculate_ushort_self();
 void calculate_ushort_csr();
+void calculate_short_real_via_cells();
 void calculate_ulong_self();
 void calculate_ulong_real_expected();
 void calculate_ulong_four_expected();
@@ -102,6 +152,12 @@ void calculate_flong_real();
 void calculate_flong_four();
 void calculate_flong_real_expected();
 void calculate_flong_four_expected();
+double calculate_kernel_Kl(int i, int j);
+double calculate_kernel_Kl_generic(double r1x,double r1y,double r1z,double r2x,double r2y,double r2z);
+double calculate_kernel_Kl_interpolated(int i, int j);
+double calculate_kernel_Kl_interpolated_generic(double r1x,double r1y,double r1z,double r2x,double r2y,double r2z);
+double calculate_kernel_KL(int i, int j);
+double calculate_kernel_KL_interpolated(int i, int j);
 
 void load_benchmark_NaNaN8();
 void load_benchmark_NaNaN64();
@@ -124,6 +180,8 @@ void load_benchmark_CsClPositiveN128();
 void load_benchmark_changaN8();
 void load_benchmark_changaN64();
 void load_benchmark_changaN512();
+void load_benchmark_simpleN2();
+void load_benchmark_changaN30000();
 void load_benchmark(int id);
 void run_msm();
 
@@ -141,10 +199,34 @@ double toc() {
   return (double)(now-previous)/CLOCKS_PER_SEC;
 }
 
+void run_tests() {
+  printf("Test 001 : ");
+  sprintf(dataname, "simpleN2");
+  Mx = 2; My = 2 ; Mz = 2 ;
+  r[0][X] =  0  ; r[0][Y] = 0 ; r[0][Z] = 0 ; q[0] = 1 ;
+  r[1][X] = .75 ; r[1][Y] = 0 ; r[1][Z] = 0 ; q[1] = 1 ;
+  N = 2;
+  Ax = 1 ; Ay = 1 ; Az = 1; detA = 1;
+  abar = 4;
+  pmax = 10;
+  v = 4;
+  mu = 2;
+  hx = Ax / Mx ;
+  hy = Ay / My ;
+  hz = Az / Mz ;
+  h = hx ; // TODO: fix
+  calculatewprime(mu);
+  a = abar * h;
+  aL = 2 * a;
+  beta = choosebeta(aL);
+  kmax = choosekmax(beta);
+  run_msm();
+}
 
 int main(int argc, char *argv[]) {
-  if (argc < 5) {
-    fprintf(stderr, "Usage: %s testid abar mu nu\n", argv[0]);
+  if ((argc != 2 && argc != 9) || (argc == 2 && atoi(argv[1]) != 0)) {
+    fprintf(stderr, "Usage: %s testid abar mu nu Mx My Mz debug\n", argv[0]);
+    fprintf(stderr, "or '%s 0' to conduct tests \n",argv[0]);
     fprintf(stderr, "  testid =  1 --> NaNaN8\n");
     fprintf(stderr, "  testid =  2 --> NaNaN64\n");
     fprintf(stderr, "  testid =  3 --> NaNaN512\n");
@@ -166,8 +248,16 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "  testid = 19 --> changaN8\n");
     fprintf(stderr, "  testid = 20 --> changaN64\n");
     fprintf(stderr, "  testid = 21 --> changaN512\n");
+    fprintf(stderr, "  testid = 22 --> simpleN2\n");
+    fprintf(stderr, "  testid = 23 --> changaN30000\n");
     return 1;
   }
+
+  if (argc == 2) {
+    run_tests();
+    return 0;
+  }
+
   int id = atoi(argv[1]);
   abar = atof(argv[2]);
   mu = atoi(argv[3]);
@@ -177,12 +267,22 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   load_benchmark(id);
+  Mx = atoi(argv[5]);
+  My = atoi(argv[6]);
+  Mz = atoi(argv[7]);
+  debug = atoi(argv[8]);
+  hx = Ax / Mx ;
+  hy = Ay / My ;
+  hz = Az / Mz ;
+  h = hx ; // TODO: fix
   calculatewprime(mu);
   a = abar * h;
   aL = 2 * a;
+
   beta = choosebeta(aL);
   kmax = choosekmax(beta);
   run_msm();
+  if (debug) display_results();
   return 0;
 }
 
@@ -237,7 +337,6 @@ void calculatewprime(int mu) {
   if (p != 4 && p != 6) {
     fprintf(stderr, "p can be 4 or 6 only\n");
   }
-  //     x     x        x     x          x
   double P[100], gold[100], g[100], gprime[100], ksiprime[100], psiprime[100];
   double Aprime[100];
   // AppendixC --> Cpoly outputs only for p=4 and p=6
@@ -411,9 +510,9 @@ void calculatewprime(int mu) {
     //printf("stencil[%3d] : %18.15f\n",i-mu-p/2,stencil[i]);
     wprime[i - mu - p / 2] = stencil[i];
   }
-  /*for (int i=0;i<20;i++)
-   printf("wprime[%3d] : %18.15f\n",i,wprime[i]);*/
-  printf("%-28s : %25.16f\n", "time_omegaprime", toc());
+  //for (int i=0;i<20;i++)
+  // printf("wprime[%3d] : %18.15f\n",i,wprime[i]);
+  time_omegaprime = toc();
 }
 
 int face_enumerate(int n) {
@@ -523,20 +622,19 @@ double gama(double rho) {
 
 // Appendix A, derivative of gamma with Horner's rule.
 double gamaprime(double rho) {
-  double out, outprime;
+  double outprime;
   double rho2 = rho * rho;
   if (rho >= 1.0) {
     outprime = -1.0 / rho2;
   } else {
     double rho2m1 = rho * rho - 1.0;
-    out = 1.0;
-    outprime = 0.0;
-    for (int k = v - 1; k >= 1; k--) {
-      out = 1.0 + (0.5 - k) / k * rho2m1 * out;
-      outprime = (0.5 - k) / k * (2 * rho * out + rho2m1 * outprime);
+    outprime = v-1;
+    for (int k = v - 1; k >= 2; k--) {
+      outprime = k - 1 + (0.5-k)/k * rho2m1 * outprime;
     }
+    outprime = - rho * outprime ;
   }
-  return outprime;
+  return outprime ;
 }
 
 // Eq.1 and 2 --> gLR(r) = erf(beta * r)/r
@@ -603,7 +701,7 @@ void calculate_ushort_real() {
       }
     }
   }
-  printf("%-28s : %25.16f\n", "time_ushort_real", toc());
+  time_ushort_real = toc();
 }
 
 // Eq. 11 second component
@@ -632,7 +730,7 @@ void calculate_ushort_self() {
   for (int i = 0; i < N; i++) {
     ushort_self += 0.5 * q[i] * q[i] * psum ;
   }
-  printf("%-28s : %25.16f\n", "time_ushort_self", toc());
+  time_ushort_self = toc();
 }
 
 // Eq. 11 third component
@@ -644,9 +742,130 @@ void calculate_ushort_csr() {
   ushort_csr = -0.5 * qsum * qsum * csr;
 }
 
+void calculate_short_real_via_cells() {
+  
+  ushort_real = 0.0;
+  
+  for (int i = 0 ; i < CMAX ; i++) {
+    for (int j = 0 ; j < CMAX ; j++) {
+      for (int k = 0 ; k < CMAX ; k++) {
+        cells[i][j][k].head = NULL ;
+        cells[i][j][k].tail = NULL ;
+      }
+    }
+  }
+  
+  double minx = 0.0;
+  double miny = 0.0;
+  double minz = 0.0;
+  for (int i = 0 ; i < N ; i++) {
+    int cellx = (r[i][X] - minx) / a  ;
+    int celly = (r[i][Y] - miny) / a  ;
+    int cellz = (r[i][Z] - minz) / a  ;
+    if (cellx >= CMAX || celly >= CMAX || cellz >= CMAX) {
+      fprintf(stderr,"Cell array is not large enough\n");
+    }
+    Cell *cell = &(cells[cellx][celly][cellz]);
+    CellElement *particle = (CellElement *)malloc(sizeof(CellElement));
+    particle->next = NULL;
+    particle->prev = NULL;
+    particle->particleIndex = i ;
+    
+    if (cell->tail == NULL) {
+      cell->head = particle ;
+      cell->tail = particle ;
+    } else {
+      particle->prev = cell->tail ;
+      cell->tail->next = particle ;
+      cell->tail = particle ;
+    }
+    
+  }
+  
+  /* Print the cells */
+  /* for (int i = 0 ; i < CMAX ; i++) {
+    for (int j = 0 ; j < CMAX ; j++) {
+      for (int k = 0 ; k < CMAX ; k++) {
+        Cell *cell = &(cells[i][j][k]);
+        CellElement *curr ;
+        curr = cell->head ;
+        printf("cell [%d][%d][%d] = {",i,j,k);
+        while (curr != NULL) {
+          printf("%d ",curr->particleIndex);
+          curr = curr->next;
+        }
+        printf("}\n");
+        
+      }
+    }
+  }*/
+  
+  // Center Cell
+  for (int ci = 0 ; ci < CMAX ; ci++) {
+    for (int cj = 0 ; cj < CMAX ; cj++) {
+      for (int ck = 0 ; ck < CMAX ; ck++) {
+        Cell *centercell = &(cells[ci][cj][ck]);
+        CellElement *centercurr ;
+        centercurr = centercell->head ;
+        while (centercurr != NULL) {
+          int i = centercurr->particleIndex;
+          fshort[i][X] = 0.0;
+          fshort[i][Y] = 0.0;
+          fshort[i][Z] = 0.0;
+          // Neighbor cell
+          int nimin = ci - 1 <  0    ? 0        : ci - 1;
+          int nimax = ci + 1 >= CMAX ? CMAX - 1 : ci + 1;
+          int njmin = cj - 1 <  0    ? 0        : cj - 1;
+          int njmax = cj + 1 >= CMAX ? CMAX - 1 : cj + 1;
+          int nkmin = ck - 1 <  0    ? 0        : ck - 1 ;
+          int nkmax = ck + 1 >= CMAX ? CMAX - 1 : ck + 1;
+          for (int ni = nimin ; ni <= nimax ; ni++) {
+            for (int nj = njmin ; nj <= njmax; nj++) {
+              for (int nk = nkmin; nk <= nkmax; nk++) {
+                Cell *ncell = &(cells[ni][nj][nk]);
+                CellElement *ncurr ;
+                ncurr = ncell->head ;
+                while (ncurr != NULL) {
+                  int j = ncurr->particleIndex;
+                  if (i != j) {
+                    int pxmin = (r[i][X] - r[j][X] - a) / Ax;
+                    int pxmax = (r[i][X] - r[j][X] + a) / Ax;
+                    int pymin = (r[i][Y] - r[j][Y] - a) / Ay;
+                    int pymax = (r[i][Y] - r[j][Y] + a) / Ay;
+                    int pzmin = (r[i][Z] - r[j][Z] - a) / Az;
+                    int pzmax = (r[i][Z] - r[j][Z] + a) / Az;
+                    for (int px = pxmin; px <= pxmax; px++) {
+                      for (int py = pymin; py <= pymax; py++) {
+                        for (int pz = pzmin; pz <= pzmax; pz++) {
+                          double rx = r[i][X] - r[j][X] - Ax * px;
+                          double ry = r[i][Y] - r[j][Y] - Ay * py;
+                          double rz = r[i][Z] - r[j][Z] - Az * pz;
+                          double rlen2 = rx * rx + ry * ry + rz * rz;
+                          double rlen = sqrt(rlen2);
+                          ushort_real += 0.5 * q[i] * q[j] * g0(rlen);
+                          fshort[i][X] += q[j] * g0prime(rlen) * rx / rlen;
+                          fshort[i][Y] += q[j] * g0prime(rlen) * ry / rlen;
+                          fshort[i][Z] += q[j] * g0prime(rlen) * rz / rlen;
+                        }
+                      }
+                    }
+                  }
+                  ncurr = ncurr->next;
+                }
+              }
+            }
+          }
+          centercurr = centercurr->next;
+        }
+      }
+    }
+  }
+}
+
 // Eq. 12 first component for l = 1
 void calculate_ulong_real_expected() {
   tic();
+  //FILE *fp = fopen("g1_eval_for_expected.data","w");
   ulong_real_expected = 0.0;
   double ulong_real_expected_before = 0.0;
   int p = 0 ;
@@ -664,10 +883,11 @@ void calculate_ulong_real_expected() {
           double rlen2 = rx * rx + ry * ry + rz * rz;
           double rlen = sqrt(rlen2);
           ulong_real_expected += 0.5 * q[i] * q[j] * g1(rlen);
+          //fprintf(fp,"%25.16e %25.16e\n",rlen,g1(rlen));
         }
       }
     }
-    printf("ulong_real_expected(p:%2d)    : %25.16e\n",p,ulong_real_expected);
+    //printf("ulong_real_expected(p:%2d)    : %25.16e\n",p,ulong_real_expected);
     if (p!= 0 && fabs(ulong_real_expected_before - ulong_real_expected)/fabs(ulong_real_expected) < TOL_DIRECT ) {
       ulong_real_expected_convergedat = p ;
       break;
@@ -675,7 +895,20 @@ void calculate_ulong_real_expected() {
       ulong_real_expected_before = ulong_real_expected ;
     p++;
   } while (p < KMAX);
-  printf("%-28s : %25.16f\n", "time_ulong_real_expected", toc());
+  time_ulong_real_expected = toc();
+  //fclose(fp);
+
+
+  tic();
+  ulong_real_expected_kernel = 0.0;
+  for (int i = 0 ; i < N ; i++) {
+    for (int j = 0 ; j < N ; j++) {
+      ulong_real_expected_kernel += 0.5 * q[i] * q[j] *
+          calculate_kernel_Kl_generic(r[i][X],r[i][Y],r[i][Z],
+              r[j][X],r[j][Y],r[j][Z]) ;
+    }
+  }
+  time_ulong_real_expected_kernel = toc();
 }
 
 // Eq. 12 first component for l = 2
@@ -710,7 +943,7 @@ void calculate_ulong_four_expected() {
         }
       }
     }
-    printf("ulong_four_expected(k:%2d)    : %25.16e\n",k,ulong_four_expected);
+    //printf("ulong_four_expected(k:%2d)    : %25.16e\n",k,ulong_four_expected);
     if (k > 0 && k % 2 == 0 && fabs(ulong_four_expected_before - ulong_four_expected)/fabs(ulong_four_expected) < TOL_FOURIER ) {
       ulong_four_expected_convergedat = k ;
       break;
@@ -718,7 +951,16 @@ void calculate_ulong_four_expected() {
       ulong_four_expected_before = ulong_four_expected ;
     k++;
   } while (k < KMAX) ;
-  printf("%-28s : %25.16f\n", "time_ulong_four_expected", toc());
+  time_ulong_four_expected = toc();
+
+  tic();
+  ulong_four_expected_kernel = 0.0;
+  for (int i = 0 ; i < N ; i++) {
+    for (int j = 0 ; j < N ; j++) {
+      ulong_four_expected_kernel += 0.5 * q[i] * q[j] * calculate_kernel_KL(i,j) ;
+    }
+  }
+  time_ulong_four_expected_kernel = toc();
 }
 
 // Eq. 12 second component
@@ -766,37 +1008,48 @@ void do_anterpolation() {
       }
     }
   }
-  printf("%-28s : %25.16f\n", "time_anterpolation", toc());
+  time_anterpolation = toc();
 }
 
 // Section 2.2.3
 // The range for m obeys Eq. 23
 void calculate_stencil_Kl() {
   tic();
-  for (int mx = Mxmin; mx <= Mxmax; mx++) {
-    for (int my = Mymin; my <= Mymax; my++) {
-      for (int mz = Mzmin; mz <= Mzmax; mz++) {
-        double sum = 0.0;
-        for (int kx = - mu - v / 2; kx <= mu + v / 2; kx++) {
-          for (int ky = - mu - v / 2; ky <= mu + v / 2; ky++) {
-            for (int kz = - mu - v / 2; kz <= mu + v / 2; kz++) {
-              // omega prime is pre-precalculated
-              double omega = wprime[abs(kx)] * wprime[abs(ky)] * wprime[abs(kz)];
-              // The sum in Eq. 24
-              // choose p s.t rlen < aL
-              int pxmin = (mx + kx) / (double) Mx - aL / Ax;
-              int pxmax = (mx + kx) / (double) Mx + aL / Ax;
-              int pymin = (my + ky) / (double) My - aL / Ay;
-              int pymax = (my + ky) / (double) My + aL / Ay;
-              int pzmin = (mz + kz) / (double) Mz - aL / Az;
-              int pzmax = (mz + kz) / (double) Mz + aL / Az;
-              for (int px = pxmin; px <= pxmax; px++) {
-                for (int py = pymin; py <= pymax; py++) {
-                  for (int pz = pzmin; pz <= pzmax; pz++) {
-                    // Hl in Eq. 24 is 1/M because of Eq. 27
-                    double rx = Ax * ((mx + kx) / (double) Mx - px);
-                    double ry = Ay * ((my + ky) / (double) My - py);
-                    double rz = Az * ((mz + kz) / (double) Mz - pz);
+  char stencilDataFile[100] ;
+  sprintf(stencilDataFile,"stencil_l%02d_Mx%02d_My%02d_Mz%02d_nu%02d_mu%02d.dat",0,Mx,My,Mz,v,mu);
+  FILE *fp = fopen(stencilDataFile,"r");
+  if (fp != NULL) {
+    for (int mx = Mxmin; mx <= Mxmax; mx++) {
+      for (int my = Mymin; my <= Mymax; my++) {
+        for (int mz = Mzmin; mz <= Mzmax; mz++) {
+          double value ;
+          fscanf(fp, "%lf",&value);
+          Kl[mx - Mxmin][my - Mymin][mz - Mzmin] = value ;
+        }
+      }
+    }
+  } else {
+    fclose(fp);
+    fp = fopen(stencilDataFile, "w");
+    for (int mx = Mxmin; mx <= Mxmax; mx++) {
+      for (int my = Mymin; my <= Mymax; my++) {
+        for (int mz = Mzmin; mz <= Mzmax; mz++) {
+          double sum = 0.0;
+          double sum_before = 0.0;
+          int p = 0 ;
+          do {
+            int face_len = face_enumerate(p);
+            for (int idx = 0 ; idx < face_len ; idx++) {
+              int px = face_i[idx];
+              int py = face_j[idx];
+              int pz = face_k[idx] ;
+              for (int kx = - mu - v / 2; kx <= mu + v / 2; kx++) {
+                for (int ky = - mu - v / 2; ky <= mu + v / 2; ky++) {
+                  for (int kz = - mu - v / 2; kz <= mu + v / 2; kz++) {
+                    double omega = wprime[abs(kx)] * wprime[abs(ky)] * wprime[abs(kz)];
+                    double rx = hx * (mx + kx) - Ax * px;
+                    double ry = hy * (my + ky) - Ay * py;
+                    double rz = hz * (mz + kz) - Az * pz;
                     double rlen2 = rx * rx + ry * ry + rz * rz;
                     double rlen = sqrt(rlen2);
                     sum += omega * g1(rlen);
@@ -804,13 +1057,20 @@ void calculate_stencil_Kl() {
                 }
               }
             }
-          }
+            if (p != 0 && fabs(sum_before - sum)/fabs(sum) < TOL_DIRECT ) {
+              break;
+            } else
+              sum_before = sum ;
+            p++;
+          } while  (p < KMAX);
+          Kl[mx - Mxmin][my - Mymin][mz - Mzmin] = sum;
+          fprintf(fp,"%25.16e\n",sum);
         }
-        Kl[mx - Mxmin][my - Mymin][mz - Mzmin] = sum;
       }
     }
+    fclose(fp);
   }
-  printf("%-28s : %25.16f\n", "time_stencilKl", toc());
+  time_stencilKl = toc();
 }
 
 // The grid potential e_m calculated for l=1
@@ -846,8 +1106,7 @@ void do_grid_to_grid_mapping() {
       }
     }
   }
-  printf("%-28s : %25.16f\n", "time_grid_to_grid", toc());
-
+  time_grid_to_grid = toc();
 }
 
 // The grid potential e_m calculated for l=2 (Fourier)
@@ -883,7 +1142,7 @@ void do_grid_to_grid_mapping_fourier() {
       }
     }
   }
-  printf("%-28s : %25.16f\n", "time_grid_to_grid_four", toc());
+  time_grid_to_grid_four = toc();
 }
 
 // Long-range real-sum is just 0.5 * qm^T * em
@@ -897,7 +1156,19 @@ void calculate_ulong_real() {
       }
     }
   }
-  printf("%-28s : %25.16f\n", "time_ulong_real", toc());
+  time_ulong_real = toc();
+
+
+  if (debug) {
+    tic();
+    ulong_real_kernel = 0.0;
+    for (int i = 0 ; i < N ; i++) {
+      for (int j = 0 ; j < N ; j++) {
+        ulong_real_kernel += 0.5 * q[i] * q[j]  * calculate_kernel_Kl_interpolated(i,j);
+      }
+    }
+    time_ulong_real_kernel = toc();
+  }
 }
 
 // Centered B-spline with order v - 1
@@ -921,40 +1192,59 @@ double calculate_c(double k, double M) {
 // The range for m obeys Eq. 23
 void calculate_stencil_KL() {
   tic();
-  for (int mx = Mxmin; mx <= Mxmax; mx++) {
-    for (int my = Mymin; my <= Mymax; my++) {
-      for (int mz = Mzmin; mz <= Mzmax; mz++) {
-
-        double sum = 0.0;
-        for (int kx = -kmax; kx <= kmax; kx++) {
-          for (int ky = -kmax; ky <= kmax; ky++) {
-            for (int kz = -kmax; kz <= kmax; kz++) {
-              if (kx == 0 && ky == 0 && kz == 0)
-                continue;
-              double kvecx = kx / Ax; // kvec = inv(A) * k
-              double kvecy = ky / Ay;
-              double kvecz = kz / Az;
-              double k2 = kvecx * kvecx + kvecy * kvecy + kvecz * kvecz;
-              // Eq. 5
-              double chi = (1.0 / (MYPI * k2 * detA))
-                  * exp(-MYPI * MYPI * k2 / (beta * beta));
-              double dotprod = kx * mx / (double) Mx + ky * my / (double) My
-                  + kz * mz / (double) Mz;
-
-              double cx = calculate_c(kx, Mx);
-              double cy = calculate_c(ky, My);
-              double cz = calculate_c(kz, Mz);
-
-              double c2 = cx * cx * cy * cy * cz * cz;
-              sum += chi * c2 * cos(2 * MYPI * dotprod);
-            }
-          }
+  char stencilDataFile[100] ;
+  sprintf(stencilDataFile,"stencil_fourier_Mx%02d_My%02d_Mz%02d_nu%02d.dat",Mx,My,Mz,v);
+  FILE *fp = fopen(stencilDataFile,"r");
+  if (fp != NULL) {
+    for (int mx = Mxmin; mx <= Mxmax; mx++) {
+      for (int my = Mymin; my <= Mymax; my++) {
+        for (int mz = Mzmin; mz <= Mzmax; mz++) {
+          double value;
+          fscanf(fp, "%lf",&value);
+          KL[mx - Mxmin][my - Mymin][mz - Mzmin] = value;
         }
-        KL[mx - Mxmin][my - Mymin][mz - Mzmin] = sum;
       }
     }
+  } else {
+    fclose(fp);
+    fp = fopen(stencilDataFile,"w");
+    for (int mx = Mxmin; mx <= Mxmax; mx++) {
+      for (int my = Mymin; my <= Mymax; my++) {
+        for (int mz = Mzmin; mz <= Mzmax; mz++) {
+          
+          double sum = 0.0;
+          for (int kx = -kmax; kx <= kmax; kx++) {
+            for (int ky = -kmax; ky <= kmax; ky++) {
+              for (int kz = -kmax; kz <= kmax; kz++) {
+                if (kx == 0 && ky == 0 && kz == 0)
+                  continue;
+                double kvecx = kx / Ax; // kvec = inv(A) * k
+                double kvecy = ky / Ay;
+                double kvecz = kz / Az;
+                double k2 = kvecx * kvecx + kvecy * kvecy + kvecz * kvecz;
+                // Eq. 5
+                double chi = (1.0 / (MYPI * k2 * detA))
+                * exp(-MYPI * MYPI * k2 / (beta * beta));
+                double dotprod = kx * mx / (double) Mx + ky * my / (double) My
+                + kz * mz / (double) Mz;
+                
+                double cx = calculate_c(kx, Mx);
+                double cy = calculate_c(ky, My);
+                double cz = calculate_c(kz, Mz);
+                
+                double c2 = cx * cx * cy * cy * cz * cz;
+                sum += chi * c2 * cos(2 * MYPI * dotprod);
+              }
+            }
+          }
+          KL[mx - Mxmin][my - Mymin][mz - Mzmin] = sum;
+          fprintf(fp,"%25.16e\n",sum);
+        }
+      }
+    }
+    fclose(fp);
   }
-  printf("%-28s : %25.16f\n", "time_stencilKL", toc());
+  time_stencilKL = toc();
 }
 
 // Potential energy for Long-range recp-sum is
@@ -969,7 +1259,19 @@ void calculate_ulong_four() {
       }
     }
   }
-  printf("%-28s : %25.16f\n", "time_ulong_four", toc());
+  time_ulong_four = toc();
+
+  if (debug) {
+    tic();
+    ulong_four_kernel = 0.0;
+    for (int i = 0 ; i < N ; i++) {
+      
+      for (int j = 0 ; j < N ; j++) {
+        ulong_four_kernel += 0.5 * q[i] * q[j]  * calculate_kernel_KL_interpolated(i,j);
+      }
+    }
+    time_ulong_four_kernel = toc();
+  }
 }
 void calculate_fshort() {
   tic();
@@ -980,34 +1282,40 @@ void calculate_fshort() {
     for (int j = 0; j < N; j++) {
       if (i == j)
         continue;
-      for (int px = -pmax; px <= pmax; px++) {
+      /* for (int px = -pmax; px <= pmax; px++) {
         for (int py = -pmax; py <= pmax; py++) {
-          for (int pz = -pmax; pz <= pmax; pz++) {
+          for (int pz = -pmax; pz <= pmax; pz++) { */
+      int pxmin = (r[i][X] - r[j][X] - a) / Ax;
+      int pxmax = (r[i][X] - r[j][X] + a) / Ax;
+      int pymin = (r[i][Y] - r[j][Y] - a) / Ay;
+      int pymax = (r[i][Y] - r[j][Y] + a) / Ay;
+      int pzmin = (r[i][Z] - r[j][Z] - a) / Az;
+      int pzmax = (r[i][Z] - r[j][Z] + a) / Az;
+      for (int px = pxmin; px <= pxmax; px++) {
+        for (int py = pymin; py <= pymax; py++) {
+          for (int pz = pzmin; pz <= pzmax; pz++) {
             double rx = r[i][X] - r[j][X] - Ax * px;
             double ry = r[i][Y] - r[j][Y] - Ay * py;
             double rz = r[i][Z] - r[j][Z] - Az * pz;
             double rlen2 = rx * rx + ry * ry + rz * rz;
             double rlen = sqrt(rlen2);
 
-            fshort[i][X] -= q[j] * g0prime(rlen) * rx / rlen;
-            fshort[i][Y] -= q[j] * g0prime(rlen) * ry / rlen;
-            fshort[i][Z] -= q[j] * g0prime(rlen) * rz / rlen;
+            fshort[i][X] += q[j] * g0prime(rlen) * rx / rlen;
+            fshort[i][Y] += q[j] * g0prime(rlen) * ry / rlen;
+            fshort[i][Z] += q[j] * g0prime(rlen) * rz / rlen;
           }
         }
       }
     }
-    fshort[i][X] *= q[i];
-    fshort[i][Y] *= q[i];
-    fshort[i][Z] *= q[i];
+    //fshort[i][X] *= q[i];
+    //fshort[i][Y] *= q[i];
+    //fshort[i][Z] *= q[i];
   }
-  printf("%-28s : %25.16f\n", "time_fshort", toc());
+  time_fshort = toc();
 }
 
 void calculate_flong_real() {
   tic();
-  double oneoverhx = 1.0 / hx;
-  double oneoverhy = 1.0 / hy;
-  double oneoverhz = 1.0 / hz;
   for (int i = 0; i < N; i++) {
     flong_real[i][X] = 0.0;
     flong_real[i][Y] = 0.0;
@@ -1019,29 +1327,14 @@ void calculate_flong_real() {
       for (int my = Mymin; my <= Mymax; my++) {
         for (int mz = Mzmin; mz <= Mzmax; mz++) {
           double gridPotential = em[mx - Mxmin][my - Mymin][mz - Mzmin];
-          for (int px = -pmax; px <= pmax; px++) {
-            for (int py = -pmax; py <= pmax; py++) {
-              for (int pz = -pmax; pz <= pmax; pz++) {
-                double phix = Bspline(v, Mx * (sx - px) - mx + v / 2);
-                double phiy = Bspline(v, My * (sy - py) - my + v / 2);
-                double phiz = Bspline(v, Mz * (sz - pz) - mz + v / 2);
-                double dphix = Bsplineprime(v, Mx * (sx - px) - mx + v / 2);
-                double dphiy = Bsplineprime(v, My * (sy - py) - my + v / 2);
-                double dphiz = Bsplineprime(v, Mz * (sz - pz) - mz + v / 2);
-                flong_real[i][X] -= oneoverhx * gridPotential * dphix *  phiy *  phiz;
-                flong_real[i][Y] -= oneoverhy * gridPotential *  phix * dphiy *  phiz;
-                flong_real[i][Z] -= oneoverhz * gridPotential *  phix *  phiy * dphiz;
-              }
-            }
-          }
+          flong_real[i][X] +=  gridPotential * varphidx(mx, my, mz, sx, sy, sz);
+          flong_real[i][Y] +=  gridPotential * varphidy(mx, my, mz, sx, sy, sz);
+          flong_real[i][Z] +=  gridPotential * varphidz(mx, my, mz, sx, sy, sz);
         }
       }
     }
-    flong_real[i][X] *= q[i] ;
-    flong_real[i][Y] *= q[i] ;
-    flong_real[i][Z] *= q[i] ;
   }
-  printf("%-28s : %25.16f\n", "time_flong_real", toc());
+  time_flong_real = toc();
 }
 void calculate_flong_four() {
   tic();
@@ -1059,29 +1352,32 @@ void calculate_flong_four() {
       for (int my = Mymin; my <= Mymax; my++) {
         for (int mz = Mzmin; mz <= Mzmax; mz++) {
           double gridPotential = em_fourier[mx - Mxmin][my - Mymin][mz - Mzmin];
-          for (int px = -pmax; px <= pmax; px++) {
-            for (int py = -pmax; py <= pmax; py++) {
-              for (int pz = -pmax; pz <= pmax; pz++) {
+          int pxmin = (-v/2 + Mx * sx - mx)/Mx ;
+          int pxmax = (+v/2 + Mx * sx - mx)/Mx ;
+          int pymin = (-v/2 + My * sy - my)/My ;
+          int pymax = (+v/2 + My * sy - my)/My ;
+          int pzmin = (-v/2 + Mz * sz - mz)/Mz ;
+          int pzmax = (+v/2 + Mz * sz - mz)/Mz ;
+          for (int px = pxmin; px <= pxmax; px++) {
+            for (int py = pymin; py <= pymax; py++) {
+              for (int pz = pzmin; pz <= pzmax; pz++) {
                 double phix = Bspline(v, Mx * (sx - px) - mx + v / 2);
                 double phiy = Bspline(v, My * (sy - py) - my + v / 2);
                 double phiz = Bspline(v, Mz * (sz - pz) - mz + v / 2);
                 double dphix = Bsplineprime(v, Mx * (sx - px) - mx + v / 2);
                 double dphiy = Bsplineprime(v, My * (sy - py) - my + v / 2);
                 double dphiz = Bsplineprime(v, Mz * (sz - pz) - mz + v / 2);
-                flong_four[i][X] -= oneoverhx * gridPotential * dphix *  phiy *  phiz;
-                flong_four[i][Y] -= oneoverhy * gridPotential *  phix * dphiy *  phiz;
-                flong_four[i][Z] -= oneoverhz * gridPotential *  phix *  phiy * dphiz;
+                flong_four[i][X] += oneoverhx * gridPotential * dphix *  phiy *  phiz;
+                flong_four[i][Y] += oneoverhy * gridPotential *  phix * dphiy *  phiz;
+                flong_four[i][Z] += oneoverhz * gridPotential *  phix *  phiy * dphiz;
               }
             }
           }
         }
       }
     }
-    flong_four[i][X] *= q[i] ;
-    flong_four[i][Y] *= q[i] ;
-    flong_four[i][Z] *= q[i] ;
   }
-  printf("%-28s : %25.16f\n", "time_flong_four", toc());
+  time_flong_four = toc();
 }
 void calculate_flong_real_expected() {
   tic();
@@ -1099,18 +1395,18 @@ void calculate_flong_real_expected() {
             double rz = r[i][Z] - r[j][Z] - Az * pz;
             double rlen2 = rx * rx + ry * ry + rz * rz;
             double rlen = sqrt(rlen2);
-            flong_real_expected[i][X] -= q[j] * g1prime(rlen) * rx / rlen;
-            flong_real_expected[i][Y] -= q[j] * g1prime(rlen) * ry / rlen;
-            flong_real_expected[i][Z] -= q[j] * g1prime(rlen) * rz / rlen;
+            flong_real_expected[i][X] += q[j] * g1prime(rlen) * rx / rlen;
+            flong_real_expected[i][Y] += q[j] * g1prime(rlen) * ry / rlen;
+            flong_real_expected[i][Z] += q[j] * g1prime(rlen) * rz / rlen;
           }
         }
       }
     }
-    flong_real_expected[i][X] *= q[i] ;
-    flong_real_expected[i][Y] *= q[i] ;
-    flong_real_expected[i][Z] *= q[i] ;
+    //flong_real_expected[i][X] *= q[i] ;
+    //flong_real_expected[i][Y] *= q[i] ;
+    //flong_real_expected[i][Z] *= q[i] ;
   }
-  printf("%-28s : %25.16f\n", "time_flong_real_expected", toc());
+  time_flong_real_expected =  toc();
 }
 
 void calculate_flong_four_expected() {
@@ -1135,23 +1431,280 @@ void calculate_flong_four_expected() {
             double dotprod = rijx * kx / Ax + rijy * ky / Ay + rijz * kz / Az;
             double acc = q[j] * exp(-MYPI * MYPI * k2 / (beta * beta))
                 * sin(2 * MYPI * dotprod) * 2.0 / (k2 * detA);
-            flong_four_expected[i][X] += acc * kx / Ax;
-            flong_four_expected[i][Y] += acc * ky / Ay;
-            flong_four_expected[i][Z] += acc * kz / Az;
+            flong_four_expected[i][X] -= acc * kx / Ax;
+            flong_four_expected[i][Y] -= acc * ky / Ay;
+            flong_four_expected[i][Z] -= acc * kz / Az;
           }
         }
       }
     }
-    flong_four_expected[i][X] *= q[i] ;
-    flong_four_expected[i][Y] *= q[i] ;
-    flong_four_expected[i][Z] *= q[i] ;
+    //flong_four_expected[i][X] *= q[i] ;
+    //flong_four_expected[i][Y] *= q[i] ;
+    //flong_four_expected[i][Z] *= q[i] ;
   }
-  printf("%-28s : %25.16f\n", "time_flong_four_expected", toc());
+  time_flong_four_expected = toc();
 }
 
+double calculate_kernel_Kl(int i, int j) {
+  return calculate_kernel_Kl_generic(r[i][X],r[i][Y],r[i][Z],r[j][X],r[j][Y],r[j][Z]);
+}
+
+double calculate_kernel_Kl_generic(double r1x,double r1y,double r1z,double r2x,double r2y,double r2z) {
+  double psum = 0.0 ;
+  for (int px = -pmax ; px <= pmax ; px++) {
+    for (int py = -pmax ; py <= pmax ; py++) {
+      for (int pz = -pmax ; pz <= pmax ; pz++) {
+        double rx = r1x - r2x - Ax * px;
+        double ry = r1y - r2y - Ay * py;
+        double rz = r1z - r2z - Az * pz;
+        double rlen2 = rx * rx + ry * ry + rz * rz;
+        double rlen = sqrt(rlen2);
+        psum += g1(rlen);
+      }
+    }
+  }
+  return psum ;
+  /*
+  //tic();
+  double psum = 0.0;
+  double psum_before = 0.0;
+  int p = 0 ;
+  do {
+    int face_len = face_enumerate(p);
+    for (int idx = 0 ; idx < face_len ; idx++) {
+      int px = face_i[idx];
+      int py = face_j[idx];
+      int pz = face_k[idx] ;
+      double rx = r1x - r2x - Ax * px;
+      double ry = r1y - r2y - Ay * py;
+      double rz = r1z - r2z - Az * pz;
+      double rlen2 = rx * rx + ry * ry + rz * rz;
+      double rlen = sqrt(rlen2);
+      psum += g1(rlen);
+    }
+    //printf("ulong_real_kernel  (p:%2d)    : %25.16e\n",p,psum);
+    if (p!= 0 && fabs(psum_before - psum)/fabs(psum) < TOL_DIRECT ) {
+      break;
+    } else
+      psum_before = psum ;
+    p++;
+  } while (p < KMAX);
+  //printf("%-28s : %25.16f\n", "time_ulong_real_kernel", toc());
+  return psum;
+   */
+}
+
+double calculate_kernel_Kl_interpolated(int i, int j) {
+  double six = r[i][X] / Ax;
+  double siy = r[i][Y] / Ay;
+  double siz = r[i][Z] / Az;
+  double sjx = r[j][X] / Ax;
+  double sjy = r[j][Y] / Ay;
+  double sjz = r[j][Z] / Az;
+  double sum = 0.0;
+  for (int mx = Mxmin; mx <= Mxmax; mx++) {
+    for (int my = Mymin; my <= Mymax; my++) {
+      for (int mz = Mzmin; mz <= Mzmax; mz++) {
+        double phim = 0.0;
+        int pxmin = (-v/2 + Mx * six - mx)/Mx ;
+        int pxmax = (+v/2 + Mx * six - mx)/Mx ;
+        int pymin = (-v/2 + My * siy - my)/My ;
+        int pymax = (+v/2 + My * siy - my)/My ;
+        int pzmin = (-v/2 + Mz * siz - mz)/Mz ;
+        int pzmax = (+v/2 + Mz * siz - mz)/Mz ;
+        for (int px = pxmin; px <= pxmax; px++) {
+          for (int py = pymin; py <= pymax; py++) {
+            for (int pz = pzmin; pz <= pzmax; pz++) {
+              double phix = Bspline(v, Mx * (six - px) - mx + v / 2);
+              double phiy = Bspline(v, My * (siy - py) - my + v / 2);
+              double phiz = Bspline(v, Mz * (siz - pz) - mz + v / 2);
+              phim += phix * phiy * phiz;
+            }
+          }
+        }
+        for (int nx = Mxmin; nx <= Mxmax; nx++) {
+          for (int ny = Mymin; ny <= Mymax; ny++) {
+            for (int nz = Mzmin; nz <= Mzmax; nz++) {
+              double phin = 0.0;
+              int pxmin = (-v/2 + Mx * sjx - nx)/Mx ;
+              int pxmax = (+v/2 + Mx * sjx - nx)/Mx ;
+              int pymin = (-v/2 + My * sjy - ny)/My ;
+              int pymax = (+v/2 + My * sjy - ny)/My ;
+              int pzmin = (-v/2 + Mz * sjz - nz)/Mz ;
+              int pzmax = (+v/2 + Mz * sjz - nz)/Mz ;
+              for (int px = pxmin; px <= pxmax; px++) {
+                for (int py = pymin; py <= pymax; py++) {
+                  for (int pz = pzmin; pz <= pzmax; pz++) {
+                    double phix = Bspline(v, Mx * (sjx - px) - nx + v / 2);
+                    double phiy = Bspline(v, My * (sjy - py) - ny + v / 2);
+                    double phiz = Bspline(v, Mz * (sjz - pz) - nz + v / 2);
+                    phin += phix * phiy * phiz;
+                  }
+                }
+              }
+              // Kl(m-n) is needed
+              int mnx = mx - nx;
+              int mny = my - ny;
+              int mnz = mz - nz;
+              // Kl is periodic
+              if (mnx < Mxmin) do { mnx += Mx ; } while (mnx < Mxmin) ;
+              if (mnx > Mxmax) do { mnx -= Mx ; } while (mnx > Mxmax) ;
+              if (mny < Mymin) do { mny += My ; } while (mny < Mymin) ;
+              if (mny > Mymax) do { mny -= My ; } while (mny > Mymax) ;
+              if (mnz < Mzmin) do { mnz += Mz ; } while (mnz < Mzmin) ;
+              if (mnz > Mzmax) do { mnz -= Mz ; } while (mnz > Mzmax) ;
+              double stencil = Kl[mnx - Mxmin][mny - Mymin][mnz - Mzmin];
+              sum += stencil * phim * phin ;
+            }
+          }
+        }
+      }
+    }
+  }
+  return sum;
+}
+
+
+double calculate_kernel_KL(int i, int j) {
+  double rx = r[i][X] - r[j][X];
+  double ry = r[i][Y] - r[j][Y];
+  double rz = r[i][Z] - r[j][Z];
+  double sum  = 0.0;
+  double sum_before = 0.0;
+  int k = 0 ;
+  do {
+    int face_len = face_enumerate(k) ;
+    for (int idx = 0 ; idx < face_len ; idx++) {
+      int kx = face_i[idx];
+      int ky = face_j[idx];
+      int kz = face_k[idx];
+      if (kx == 0 && ky == 0 && kz == 0) continue;
+          double kvecx = kx / Ax;
+          double kvecy = ky / Ay;
+          double kvecz = kz / Az;
+          double k2 = kvecx * kvecx + kvecy * kvecy + kvecz * kvecz;
+          double chi = (1.0 / (MYPI * k2 * detA))
+          * exp(-MYPI * MYPI * k2 / (beta * beta));
+          double dotprod = kvecx * rx + kvecy * ry + kvecz * rz;
+          sum += chi * cos(2.0 * MYPI * dotprod);
+    }
+    //printf("stencilKL          (k:%2d)    : %25.16e\n",k,sum);
+    if (k > 0 && k % 2 == 0 && fabs(sum_before - sum)/fabs(sum) < TOL_FOURIER ) {
+      break;
+    } else
+      sum_before = sum ;
+    k++;
+  } while (k < KMAX) ;
+  return sum;
+}
+
+double calculate_kernel_KL_interpolated(int i, int j) {
+  double six = r[i][X] / Ax;
+   double siy = r[i][Y] / Ay;
+   double siz = r[i][Z] / Az;
+   double sjx = r[j][X] / Ax;
+   double sjy = r[j][Y] / Ay;
+   double sjz = r[j][Z] / Az;
+   double sum = 0.0;
+   for (int mx = Mxmin; mx <= Mxmax; mx++) {
+     for (int my = Mymin; my <= Mymax; my++) {
+       for (int mz = Mzmin; mz <= Mzmax; mz++) {
+         double phim = 0.0;
+         int pxmin = (-v/2 + Mx * six - mx)/Mx ;
+         int pxmax = (+v/2 + Mx * six - mx)/Mx ;
+         int pymin = (-v/2 + My * siy - my)/My ;
+         int pymax = (+v/2 + My * siy - my)/My ;
+         int pzmin = (-v/2 + Mz * siz - mz)/Mz ;
+         int pzmax = (+v/2 + Mz * siz - mz)/Mz ;
+         for (int px = pxmin; px <= pxmax; px++) {
+           for (int py = pymin; py <= pymax; py++) {
+             for (int pz = pzmin; pz <= pzmax; pz++) {
+               double phix = Bspline(v, Mx * (six - px) - mx + v / 2);
+               double phiy = Bspline(v, My * (siy - py) - my + v / 2);
+               double phiz = Bspline(v, Mz * (siz - pz) - mz + v / 2);
+               phim += phix * phiy * phiz;
+             }
+           }
+         }
+         for (int nx = Mxmin; nx <= Mxmax; nx++) {
+           for (int ny = Mymin; ny <= Mymax; ny++) {
+             for (int nz = Mzmin; nz <= Mzmax; nz++) {
+               double phin = 0.0;
+               int pxmin = (-v/2 + Mx * sjx - nx)/Mx ;
+               int pxmax = (+v/2 + Mx * sjx - nx)/Mx ;
+               int pymin = (-v/2 + My * sjy - ny)/My ;
+               int pymax = (+v/2 + My * sjy - ny)/My ;
+               int pzmin = (-v/2 + Mz * sjz - nz)/Mz ;
+               int pzmax = (+v/2 + Mz * sjz - nz)/Mz ;
+               for (int px = pxmin; px <= pxmax; px++) {
+                 for (int py = pymin; py <= pymax; py++) {
+                   for (int pz = pzmin; pz <= pzmax; pz++) {
+                     double phix = Bspline(v, Mx * (sjx - px) - nx + v / 2);
+                     double phiy = Bspline(v, My * (sjy - py) - ny + v / 2);
+                     double phiz = Bspline(v, Mz * (sjz - pz) - nz + v / 2);
+                     phin += phix * phiy * phiz;
+                   }
+                 }
+               }
+               int mnx = mx - nx;
+               int mny = my - ny;
+               int mnz = mz - nz;
+               if (mnx < Mxmin) do { mnx += Mx ; } while (mnx < Mxmin) ;
+               if (mnx > Mxmax) do { mnx -= Mx ; } while (mnx > Mxmax) ;
+               if (mny < Mymin) do { mny += My ; } while (mny < Mymin) ;
+               if (mny > Mymax) do { mny -= My ; } while (mny > Mymax) ;
+               if (mnz < Mzmin) do { mnz += Mz ; } while (mnz < Mzmin) ;
+               if (mnz > Mzmax) do { mnz -= Mz ; } while (mnz > Mzmax) ;
+               double stencil = KL[mnx - Mxmin][mny - Mymin][mnz - Mzmin];
+               sum += stencil * phim * phin ;
+             }
+           }
+         }
+       }
+     }
+   }
+   return sum;
+}
+
+void data_read(char *filename)
+{
+  FILE *fp = fopen(filename,"r");
+  fscanf(fp,"%lf %lf %lf",&Ax,&Ay,&Az);
+  fscanf(fp,"%d",&N);
+  for (int i = 0 ; i < N ; i++) {
+    double rx,ry,rz,charge ;
+    fscanf(fp,"%lf %lf %lf %lf",&rx,&ry,&rz,&charge);
+    r[i][X] = rx ;
+    r[i][Y] = ry ;
+    r[i][Z] = rz ;
+    q[i] = charge;
+  }
+  fclose(fp);
+}
 // Self-explanatory
 void display_results() {
   printf("%-28s : %-20s\n", "Testing...", dataname);
+  printf("%-28s : %15.6f\n","time_omegaprime",time_omegaprime);
+  printf("%-28s : %15.6f\n","time_anterpolation",time_anterpolation);
+  printf("%-28s : %15.6f\n","time_ushort_real",time_ushort_real);
+  printf("%-28s : %15.6f\n","time_ushort_self",time_ushort_self);
+  printf("%-28s : %15.6f\n","time_stencilKl",time_stencilKl);
+  printf("%-28s : %15.6f\n","time_grid_to_grid",time_grid_to_grid);
+  printf("%-28s : %15.6f\n","time_ulong_real",time_ulong_real);
+  printf("%-28s : %15.6f\n","time_ulong_real_kernel",time_ulong_real_kernel);
+  printf("%-28s : %15.6f\n","time_stencilKL",time_stencilKL);
+  printf("%-28s : %15.6f\n","time_grid_to_grid_four",time_grid_to_grid_four);
+  printf("%-28s : %15.6f\n","time_ulong_four",time_ulong_four);
+  printf("%-28s : %15.6f\n","time_ulong_four_kernel",time_ulong_four_kernel);
+  printf("%-28s : %15.6f\n","time_ulong_real_expected",time_ulong_real_expected);
+  printf("%-28s : %15.6f\n","time_ulong_real_expected_kernel",time_ulong_real_expected_kernel);
+  printf("%-28s : %15.6f\n","time_ulong_four_expected",time_ulong_four_expected);
+  printf("%-28s : %15.6f\n","time_ulong_four_expected_kernel",time_ulong_four_expected_kernel);
+  printf("%-28s : %15.6f\n","time_fshort",time_fshort);
+  printf("%-28s : %15.6f\n","time_flong_real",time_flong_real);
+  printf("%-28s : %15.6f\n","time_flong_four",time_flong_four);
+  printf("%-28s : %15.6f\n","time_flong_real_expected",time_flong_real_expected);
+  printf("%-28s : %15.6f\n","time_flong_four_expected",time_flong_four_expected);
   printf("%-28s : %-d\n", "N", N);
   printf("%-28s : %-d\n", "mu", mu);
   printf("%-28s : %-d\n", "v", v);
@@ -1172,17 +1725,24 @@ void display_results() {
   printf("%-28s : %25.16e\n", "ushort_csr", ushort_csr);
   printf("%-28s : %25.16e\n", "ulong_self", ulong_self);
   printf("%-28s : %25.16e\n", "ulong_real", ulong_real);
+  printf("%-28s : %25.16e\n", "ulong_real_kernel", ulong_real_kernel);
   printf("%-28s : %25.16e\n", "ulong_real_expected", ulong_real_expected);
+  printf("%-28s : %25.16e\n", "ulong_real_expected_kernel", ulong_real_expected_kernel);
+
   printf("%-28s : %d\n", "ulong_real_expected_convergedat", ulong_real_expected_convergedat);
   printf("%-28s : %25.16e\n", "ulong_real_relerr",
-      fabs(ulong_real_expected - ulong_real) / fabs(ulong_real_expected + ulong_four_expected));
+      fabs(ulong_real_expected - ulong_real) / fabs(ulong_real_expected));
   printf("%-28s : %25.16e\n", "ulong_four", ulong_four);
+  printf("%-28s : %25.16e\n", "ulong_four_kernel", ulong_four_kernel);
+
   printf("%-28s : %25.16e\n", "ulong_four_expected",ulong_four_expected);
+  printf("%-28s : %25.16e\n", "ulong_four_expected_kernel", ulong_four_expected_kernel);
+
   printf("%-28s : %d\n", "ulong_four_expected_convergedat", ulong_four_expected_convergedat);
 
   printf("%-28s : %25.16e\n", "ulong_four_relerr",
       fabs(ulong_four - ulong_four_expected)
-          / fabs(ulong_four_expected + ulong_real_expected));
+          / fabs(ulong_four_expected));
   printf("%-28s : %25.16e\n", "ulong_relerr",
       fabs(
           ulong_real + ulong_four - ulong_real_expected
@@ -1193,7 +1753,11 @@ void display_results() {
   printf("%-28s : %25.16e\n", "utotal_expected", utotal_expected);
   printf("%-28s : %25.16e\n", "utotal_relerr",
       fabs(utotal_expected - utotal) / fabs(utotal_expected));
-
+  {
+    FILE *fp = fopen("msm.pot","w");
+    fprintf(fp,"%20.15e\n", utotal);
+    fclose(fp);
+  }
   {
     double ftotal_max = -1;
     for (int i = 0; i < N; i++) {
@@ -1204,6 +1768,26 @@ void display_results() {
     printf("%-28s : %25.16e\n", "ftotal_err_max", ftotal_max);
   }
   
+  {
+    double flong_real_err_max = -1;
+    for (int i = 0; i < N; i++) {
+      double relerror = diffnorm(flong_real[i], flong_real_expected[i], 3) / norm(flong_real_expected[i],3);
+      if (relerror > flong_real_err_max)
+        flong_real_err_max = relerror;
+    }
+    printf("%-28s : %25.16e\n", "flong_real_err_max", flong_real_err_max);
+  }
+
+  {
+    double flong_four_err_max = -1;
+    for (int i = 0; i < N; i++) {
+      double relerror = diffnorm(flong_four[i], flong_four_expected[i], 3) / norm(flong_four_expected[i],3);
+      if (relerror > flong_four_err_max)
+        flong_four_err_max = relerror;
+    }
+    printf("%-28s : %25.16e\n", "flong_four_err_max", flong_four_err_max);
+  }
+
   {
     double top = 0.0;
     double bottom = 0.0;
@@ -1278,6 +1862,54 @@ void display_results() {
       fprintf(fp, "\n");
     }
   }
+  
+  {
+    FILE *fp = fopen("msm.acc_expected", "w");
+    fprintf(fp, "%d\n", N);
+    for (int i = 0; i < N; i++) {
+      fprintf(fp, "%-25.16e ", ftotal_expected[i][X]);
+      fprintf(fp, "\n");
+    }
+    for (int i = 0; i < N; i++) {
+      fprintf(fp, "%-25.16e ", ftotal_expected[i][Y]);
+      fprintf(fp, "\n");
+    }
+    for (int i = 0; i < N; i++) {
+      fprintf(fp, "%-25.16e ", ftotal_expected[i][Z]);
+      fprintf(fp, "\n");
+    }
+  }
+  
+  fprintf(stdout,"-----force---\n");
+  fprintf(stdout, "%-28s : %25.16e \n", "flong_real_1x_expected",flong_real_expected[0][X]);
+  fprintf(stdout, "%-28s : %25.16e \n", "flong_real_1x"         ,flong_real[0][X]);
+  fprintf(stdout, "%-28s : %25.16e \n", "flong_real_2x_expected",flong_real_expected[1][X]);
+  fprintf(stdout, "%-28s : %25.16e \n", "flong_real_2x"         ,flong_real[1][X]);
+  fprintf(stdout, "%-28s : %25.16e \n", "flong_four_1x_expected",flong_four_expected[0][X]);
+  fprintf(stdout, "%-28s : %25.16e \n", "flong_four_1x"         ,flong_four[0][X]);
+  fprintf(stdout, "%-28s : %25.16e \n", "flong_four_2x_expected",flong_four_expected[1][X]);
+  fprintf(stdout, "%-28s : %25.16e \n", "flong_four_2x"         ,flong_four[1][X]);
+  
+  {
+    for (int mx = Mxmin; mx <= Mxmax; mx++) {
+      for (int my = Mymin; my <= Mymax; my++) {
+        for (int mz = Mzmin; mz <= Mzmax; mz++) {
+          fprintf(stdout,"%d %d %d %9.5f ",mx,my,mz,em[mx-Mxmin][my-Mymin][mz-Mzmin]);
+          for (int i = 1; i <= 1; i++) {
+            double sx = r[i][X] / Ax;
+            double sy = r[i][Y] / Ay;
+            double sz = r[i][Z] / Az;
+            printf("%9.5f %9.5f %9.5f %9.5f",varphi(mx, my, mz, sx, sy, sz),
+                   varphidx(mx, my, mz, sx, sy, sz),
+                   varphidy(mx, my, mz, sx, sy, sz),
+                   varphidz(mx, my, mz, sx, sy, sz));
+
+          }
+          printf("\n");
+        }
+      }
+    }
+  }
 }
 
 void load_benchmark(int id) {
@@ -1303,10 +1935,11 @@ void load_benchmark(int id) {
   case 19:   load_benchmark_changaN8();        break;
   case 20:   load_benchmark_changaN64();       break;
   case 21:   load_benchmark_changaN512();      break;
+  case 22:   load_benchmark_simpleN2();        break;
+  case 23:   load_benchmark_changaN30000();   break;
   }
 }
-// I numbered all 12 benchmarks with an integer
-// I load the related data and apply MSM
+
 void run_msm() {
   Mxmin = - (Mx - 1) / 2;
   Mxmax =    Mx      / 2;
@@ -1317,10 +1950,8 @@ void run_msm() {
 
   do_anterpolation();
 
-  //for (int i = 0 ; i < N ; i++)
-  //    printf("r[%2d] q:%f : %f %f %f\n",i,q[i],r[i][X],r[i][Y],r[i][Z]);
-  // There is no approximated versions of these four quantities
-  calculate_ushort_real();
+  calculate_short_real_via_cells();
+  //calculate_ushort_real();
   calculate_ushort_self();
   calculate_ushort_csr();
   calculate_ulong_self();
@@ -1332,38 +1963,81 @@ void run_msm() {
   calculate_stencil_KL();
   do_grid_to_grid_mapping_fourier();
   calculate_ulong_four();
-
-  calculate_ulong_real_expected();
-  calculate_ulong_four_expected();
-
+  
   // Total potential energy when using interpolation for ulong_real and ulong_fourier
   utotal = ushort_real + ushort_self + ushort_csr + ulong_self + ulong_real
-      + ulong_four;
-
-  // Total potential energy without interpolation
-  utotal_expected = ushort_real + ushort_self + ushort_csr + ulong_self
-      + ulong_real_expected + ulong_four_expected;
-
+  + ulong_four;
+  
   // Calculate forces
-  calculate_fshort();
+  //calculate_fshort();
   calculate_flong_real();
   calculate_flong_four();
-  calculate_flong_real_expected();
-  calculate_flong_four_expected();
-
-  for (int i = 0; i < N * 3; i++) {
+  
+  for (int i = 0; i < N ; i++) {
     ftotal[i][X] = fshort[i][X] + flong_real[i][X] + flong_four[i][X];
     ftotal[i][Y] = fshort[i][Y] + flong_real[i][Y] + flong_four[i][Y];
     ftotal[i][Z] = fshort[i][Z] + flong_real[i][Z] + flong_four[i][Z];
-    ftotal_expected[i][X] = fshort[i][X] + flong_real_expected[i][X]
-        + flong_four_expected[i][X];
-    ftotal_expected[i][Y] = fshort[i][Y] + flong_real_expected[i][Y]
-        + flong_four_expected[i][Y];
-    ftotal_expected[i][Z] = fshort[i][Z] + flong_real_expected[i][Z]
-        + flong_four_expected[i][Z];
+  }
+  
+  {
+    FILE *fp = fopen("msm.acc", "w");
+    fprintf(fp, "%d\n", N);
+    for (int i = 0; i < N; i++) {
+      fprintf(fp, "%-25.16e ", ftotal[i][X]);
+      fprintf(fp, "\n");
+    }
+    for (int i = 0; i < N; i++) {
+      fprintf(fp, "%-25.16e ", ftotal[i][Y]);
+      fprintf(fp, "\n");
+    }
+    for (int i = 0; i < N; i++) {
+      fprintf(fp, "%-25.16e ", ftotal[i][Z]);
+      fprintf(fp, "\n");
+    }
+  }
+  
+  if (debug) {
+    calculate_ulong_real_expected();
+    calculate_ulong_four_expected();
+    // Total potential energy without interpolation
+    utotal_expected = ushort_real + ushort_self + ushort_csr + ulong_self
+    + ulong_real_expected + ulong_four_expected;
+    calculate_flong_real_expected();
+    calculate_flong_four_expected();
+    for (int i = 0; i < N ; i++) {
+      ftotal_expected[i][X] = fshort[i][X] + flong_real_expected[i][X]
+      + flong_four_expected[i][X];
+      ftotal_expected[i][Y] = fshort[i][Y] + flong_real_expected[i][Y]
+      + flong_four_expected[i][Y];
+      ftotal_expected[i][Z] = fshort[i][Z] + flong_real_expected[i][Z]
+      + flong_four_expected[i][Z];
+    }
   }
 
-  display_results();
+  if (debug) {
+    display_results();
+    /* {
+     FILE *fp = fopen("msm.kerneldiag","w");
+     for (int i = 0 ; i < N ; i++) {
+     double rix = r[i][X] ;
+     double riy = r[i][Y] ;
+     double riz = r[i][Z] ;
+     for (int j = 0 ; j < N ; j++) {
+     double rjx = r[j][X] ;
+     double rjy = r[j][Y] ;
+     double rjz = r[j][Z] ;
+     double d = diffnorm(r[i],r[j],3);
+     double kernel = calculate_kernel_Kl(i,j);
+     double kernel_interpolated = calculate_kernel_Kl_interpolated(i,j);
+     double kernel_four = calculate_kernel_KL(i,j);
+     double kernel_interpolated_four = calculate_kernel_KL_interpolated(i,j);
+     fprintf(fp,"%3d %3d %25.16e %25.16e %25.16e %25.16e %25.16e %25.16e %25.16e %25.16e %25.16e %25.16e %25.16e\n",
+     i,j,rix,riy,riz,rjx,rjy,rjz,d,kernel,kernel_interpolated,kernel_four,kernel_interpolated_four);
+     }
+     }
+     fclose(fp);
+     } */
+  }
 }
 
 // A very straightforward recursive implementation of B-splines in 2.2.1
@@ -1384,6 +2058,89 @@ double Bsplineprime(int k, double u) {
   return Bspline(k - 1, u) - Bspline(k - 1, u - 1);
 }
 
+double varphi(int mx,int my,int mz,double sx,double sy,double sz) {
+  double sum = 0.0;
+  int pxmin = (-v/2 + Mx * sx - mx)/Mx ;
+  int pxmax = (+v/2 + Mx * sx - mx)/Mx ;
+  int pymin = (-v/2 + My * sy - my)/My ;
+  int pymax = (+v/2 + My * sy - my)/My ;
+  int pzmin = (-v/2 + Mz * sz - mz)/Mz ;
+  int pzmax = (+v/2 + Mz * sz - mz)/Mz ;
+  for (int px = pxmin; px <= pxmax; px++) {
+    for (int py = pymin; py <= pymax; py++) {
+      for (int pz = pzmin; pz <= pzmax; pz++) {
+        double phix = Bspline(v, Mx * (sx - px) - mx + v / 2);
+        double phiy = Bspline(v, My * (sy - py) - my + v / 2);
+        double phiz = Bspline(v, Mz * (sz - pz) - mz + v / 2);
+        sum +=  phix * phiy * phiz;
+      }
+    }
+  }
+  return sum;
+}
+
+double varphidx(int mx,int my,int mz,double sx,double sy,double sz) {
+  double sum = 0.0;
+  int pxmin = (-v/2 + Mx * sx - mx)/Mx ;
+  int pxmax = (+v/2 + Mx * sx - mx)/Mx ;
+  int pymin = (-v/2 + My * sy - my)/My ;
+  int pymax = (+v/2 + My * sy - my)/My ;
+  int pzmin = (-v/2 + Mz * sz - mz)/Mz ;
+  int pzmax = (+v/2 + Mz * sz - mz)/Mz ;
+  for (int px = pxmin; px <= pxmax; px++) {
+    for (int py = pymin; py <= pymax; py++) {
+      for (int pz = pzmin; pz <= pzmax; pz++) {
+        double dphix = Bsplineprime(v, Mx * (sx - px) - mx + v / 2);
+        double  phiy = Bspline(v, My * (sy - py) - my + v / 2);
+        double  phiz = Bspline(v, Mz * (sz - pz) - mz + v / 2);
+        sum +=  dphix * phiy * phiz / hx;
+      }
+    }
+  }
+  return sum;
+}
+double varphidy(int mx,int my,int mz,double sx,double sy,double sz) {
+  double sum = 0.0;
+  int pxmin = (-v/2 + Mx * sx - mx)/Mx ;
+  int pxmax = (+v/2 + Mx * sx - mx)/Mx ;
+  int pymin = (-v/2 + My * sy - my)/My ;
+  int pymax = (+v/2 + My * sy - my)/My ;
+  int pzmin = (-v/2 + Mz * sz - mz)/Mz ;
+  int pzmax = (+v/2 + Mz * sz - mz)/Mz ;
+  for (int px = pxmin; px <= pxmax; px++) {
+    for (int py = pymin; py <= pymax; py++) {
+      for (int pz = pzmin; pz <= pzmax; pz++) {
+        double  phix = Bspline(v, Mx * (sx - px) - mx + v / 2);
+        double dphiy = Bsplineprime(v, My * (sy - py) - my + v / 2);
+        double  phiz = Bspline(v, Mz * (sz - pz) - mz + v / 2);
+        sum +=   phix * dphiy * phiz / hy;
+      }
+    }
+  }
+  return sum;
+}
+double varphidz(int mx,int my,int mz,double sx,double sy,double sz) {
+  double sum = 0.0;
+  int pxmin = (-v/2 + Mx * sx - mx)/Mx ;
+  int pxmax = (+v/2 + Mx * sx - mx)/Mx ;
+  int pymin = (-v/2 + My * sy - my)/My ;
+  int pymax = (+v/2 + My * sy - my)/My ;
+  int pzmin = (-v/2 + Mz * sz - mz)/Mz ;
+  int pzmax = (+v/2 + Mz * sz - mz)/Mz ;
+  for (int px = pxmin; px <= pxmax; px++) {
+    for (int py = pymin; py <= pymax; py++) {
+      for (int pz = pzmin; pz <= pzmax; pz++) {
+        double  phix = Bspline(v, Mx * (sx - px) - mx + v / 2);
+        double  phiy = Bspline(v, My * (sy - py) - my + v / 2);
+        double dphiz = Bsplineprime(v, Mz * (sz - pz) - mz + v / 2);
+        sum +=  phix * phiy * dphiz / hz;
+      }
+    }
+  }
+  return sum;
+}
+
+
 // N=8 case of Figure 1 in report20180327
 void load_benchmark_NaNaN8() {
   sprintf(dataname, "NaNaN8");
@@ -1392,10 +2149,6 @@ void load_benchmark_NaNaN8() {
   detA = Ax * Ay * Az;
   kmax = 10;
   pmax = 10;
-  h = hL = hx = hy = hz = 1;
-  Mx = My = Mz = 2;
-  a = abar * h;
-  aL = 2 * a;
 
   int nx = 2;
   int ny = 2;
@@ -1422,10 +2175,6 @@ void load_benchmark_NaNaN64() {
   detA = Ax * Ay * Az;
   kmax = 10;
   pmax = 10;
-  h = hL = hx = hy = hz = 1;
-  Mx = My = Mz = 4;
-  a = abar * h;
-  aL = 2 * a;
 
   int nx = 4;
   int ny = 4;
@@ -1452,10 +2201,6 @@ void load_benchmark_NaNaN512() {
   detA = Ax * Ay * Az;
   kmax = 10;
   pmax = 10;
-  h = hL = hx = hy = hz = 1;
-  Mx = My = Mz = 8;
-  a = abar * h;
-  aL = 2 * a;
 
   int nx = 8;
   int ny = 8;
@@ -1515,10 +2260,6 @@ void load_benchmark_NaClN8() {
   detA = Ax * Ay * Az;
   kmax = 10;
   pmax = 10;
-  h = hL = hx = hy = hz = 1;
-  Mx = My = Mz = 2;
-  a = abar * h;
-  aL = 2 * a;
 
   int nx = 2;
   int ny = 2;
@@ -1545,10 +2286,6 @@ void load_benchmark_NaClN64() {
   detA = Ax * Ay * Az;
   kmax = 10;
   pmax = 10;
-  h = hL = hx = hy = hz = 1;
-  Mx = My = Mz = 4;
-  a = abar * h;
-  aL = 2 * a;
 
   int nx = 4;
   int ny = 4;
@@ -1575,10 +2312,6 @@ void load_benchmark_NaClN512() {
   detA = Ax * Ay * Az;
   kmax = 10;
   pmax = 10;
-  h = hL = hx = hy = hz = 1;
-  Mx = My = Mz = 8;
-  a = abar * h;
-  aL = 2 * a;
 
   int nx = 8;
   int ny = 8;
@@ -1637,10 +2370,6 @@ void load_benchmark_CsClN2() {
   detA = Ax * Ay * Az;
   kmax = 10;
   pmax = 10;
-  h = hL = hx = hy = hz = 0.5;
-  Mx = My = Mz = 2;
-  a = abar * h;
-  aL = 2 * a;
 
   int nx = 1;
   int ny = 1;
@@ -1675,10 +2404,6 @@ void load_benchmark_CsClN16() {
   detA = Ax * Ay * Az;
   kmax = 10;
   pmax = 10;
-  h = hL = hx = hy = hz = 0.5;
-  Mx = My = Mz = 4;
-  a = abar * h;
-  aL = 2 * a;
 
   int nx = 2;
   int ny = 2;
@@ -1712,10 +2437,6 @@ void load_benchmark_CsClN128() {
   detA = Ax * Ay * Az;
   kmax = 10;
   pmax = 10;
-  h = hL = hx = hy = hz = 0.5;
-  Mx = My = Mz = 8;
-  a = abar * h;
-  aL = 2 * a;
 
   int nx = 4;
   int ny = 4;
@@ -1771,15 +2492,13 @@ void load_benchmark_CsClPositiveN128() {
 // N=8 randomly distributed particles in unit-cube
 void load_benchmark_changaN8() {
   sprintf(dataname, "changaN8");
+  //data_read("data/benchmark_changaN8.txt");
   N    = 8;
   Ax   = Ay = Az = 1;
   detA = Ax * Ay * Az ;
   kmax = 10;
   pmax = 10;
-  h    = hL = hx = hy = hz = 0.5 ;
-  Mx   = My = Mz = 2;
-  a = abar * h ;
-  aL = 2 * a ;
+
   r[ 0][X]= 7.892292e-01; r[ 0][Y]= 5.422255e-01; r[ 0][Z]= 1.832440e-01; q[  0]= 9.993093e-06;
   r[ 1][X]= 3.162612e-01; r[ 1][Y]= 9.933904e-01; r[ 1][Z]= 5.268250e-02; q[  1]= 9.993093e-06;
   r[ 2][X]= 6.496070e-02; r[ 2][Y]= 2.662055e-01; r[ 2][Z]= 4.990308e-01; q[  2]= 9.993093e-06;
@@ -1792,16 +2511,32 @@ void load_benchmark_changaN8() {
 
 // N=64 randomly distributed particles in unit-cube
 void load_benchmark_changaN64() {
+  load_benchmark_changaN8();
   sprintf(dataname, "changaN64");
-  N    = 64;
-  Ax   = Ay = Az = 1;
-  detA = Ax * Ay * Az ;
+  int ncopy = 1 ;
   kmax = 10;
   pmax = 10;
-  h    = hL = hx = hy = hz = 0.25 ;
-  Mx   = My = Mz = 4;
-  a = abar * h ;
-  aL = 2 * a ;
+  int counter = 0 ;
+  for (int copyx = 0; copyx <= ncopy ; copyx++) {
+    for (int copyy = 0 ; copyy <= ncopy ; copyy++) {
+      for (int copyz = 0 ; copyz <= ncopy ; copyz++) {
+        for (int i = 0 ; i < N ; i++) {
+          r[counter][X] = r[i][X] + Ax * copyx ;
+          r[counter][Y] = r[i][Y] + Ay * copyy ;
+          r[counter][Z] = r[i][Z] + Az * copyz ;
+          q[counter]    = q[i] ;
+          counter++;
+        }
+      }
+    }
+
+  }
+  Ax = Ax * (ncopy + 1) ;
+  Ay = Ay * (ncopy + 1) ;
+  Az = Az * (ncopy + 1) ;
+  N  = N * pow(ncopy + 1,3) ;
+  detA = Ax * Ay * Az ;
+  /*
   r[ 0][X]= 6.851051e-01; r[ 0][Y]= 3.284786e-01; r[ 0][Z]= 8.348171e-01; q[  0]= 9.993093e-06;
   r[ 1][X]= 1.227815e-01; r[ 1][Y]= 3.274495e-01; r[ 1][Z]= 9.072554e-01; q[  1]= 9.993093e-06;
   r[ 2][X]= 1.565225e-01; r[ 2][Y]= 9.730324e-01; r[ 2][Z]= 3.278511e-01; q[  2]= 9.993093e-06;
@@ -1866,20 +2601,44 @@ void load_benchmark_changaN64() {
   r[61][X]= 4.733331e-01; r[61][Y]= 3.019186e-01; r[61][Z]= 8.890947e-01; q[ 61]= 9.993093e-06;
   r[62][X]= 7.012500e-02; r[62][Y]= 4.189419e-01; r[62][Z]= 8.550628e-01; q[ 62]= 9.993093e-06;
   r[63][X]= 6.721672e-01; r[63][Y]= 1.791827e-01; r[63][Z]= 2.731031e-01; q[ 63]= 9.993093e-06;
+  */
 }
 
 // N=512 randomly distributed particles in unit-cube
 void load_benchmark_changaN512() {
-  sprintf(dataname, "changaN512");
+  /* sprintf(dataname, "changaN512");
   N    = 512;
   Ax   = Ay = Az = 1;
   detA = Ax * Ay * Az ;
   kmax = 10;
+  pmax = 10; */
+
+  load_benchmark_changaN8();
+  sprintf(dataname, "changaN512");
+  int ncopy = 3 ;
+  kmax = 10;
   pmax = 10;
-  h    = hL = hx = hy = hz = 0.125 ;
-  Mx   = My = Mz = 8;
-  a = abar * h ;
-  aL = 2 * a ;
+  int counter = 0 ;
+  for (int copyx = 0; copyx <= ncopy ; copyx++) {
+    for (int copyy = 0 ; copyy <= ncopy ; copyy++) {
+      for (int copyz = 0 ; copyz <= ncopy ; copyz++) {
+        for (int i = 0 ; i < N ; i++) {
+          r[counter][X] = r[i][X] + Ax * copyx ;
+          r[counter][Y] = r[i][Y] + Ay * copyy ;
+          r[counter][Z] = r[i][Z] + Az * copyz ;
+          q[counter]    = q[i] ;
+          counter++;
+        }
+      }
+    }
+  }
+  Ax = Ax * (ncopy + 1) ;
+  Ay = Ay * (ncopy + 1) ;
+  Az = Az * (ncopy + 1) ;
+  N  = N * pow(ncopy + 1,3) ;
+  detA = Ax * Ay * Az ;
+  
+  /*
   r[ 0][X]= 6.911842e-01; r[ 0][Y]= 7.251611e-01; r[ 0][Z]= 2.556736e-01; q[  0]= 9.993093e-06;
   r[ 1][X]= 4.153972e-01; r[ 1][Y]= 1.923024e-01; r[ 1][Z]= 6.005900e-02; q[  1]= 9.993093e-06;
   r[ 2][X]= 7.012648e-01; r[ 2][Y]= 7.103131e-01; r[ 2][Z]= 3.901396e-01; q[  2]= 9.993093e-06;
@@ -2392,4 +3151,25 @@ void load_benchmark_changaN512() {
   r[509][X]= 6.721672e-01; r[509][Y]= 1.791827e-01; r[509][Z]= 2.731031e-01; q[509]= 9.993093e-06;
   r[510][X]= 9.604940e-01; r[510][Y]= 5.306052e-01; r[510][Z]= 9.522110e-01; q[510]= 9.993093e-06;
   r[511][X]= 2.019551e-01; r[511][Y]= 3.950060e-02; r[511][Z]= 3.419927e-01; q[511]= 9.993093e-06;
+  */
+}
+
+void load_benchmark_simpleN2() {
+  sprintf(dataname, "simpleN2");
+  N    = 2;
+  Ax   = Ay = Az = 1;
+  detA = Ax * Ay * Az ;
+  kmax = 10;
+  pmax = 10;
+  
+  r[0][X]= 0   ; r[0][Y]= 0; r[0][Z]= 0; q[0]= 1;
+  r[1][X]= 0.75; r[1][Y]= 0; r[1][Z]= 0; q[1]= 1;
+}
+
+void load_benchmark_changaN30000() {
+  sprintf(dataname,"changaN30000");
+  data_read("data/benchmark_changaN30000.txt");
+  detA = Ax * Ay * Az ;
+  kmax = 10;
+  pmax = 10;
 }
